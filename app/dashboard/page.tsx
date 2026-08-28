@@ -32,7 +32,9 @@ export default function DashboardPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [basi, setBasi] = useState<BaseMusicale[]>([]);
+  const [warmupBasi, setWarmupBasi] = useState<BaseMusicale[]>([]);
   const [loadingBasi, setLoadingBasi] = useState(true);
+  const [loadingWarmup, setLoadingWarmup] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Metronomo
@@ -43,7 +45,7 @@ export default function DashboardPage() {
   // Player Audio Avanzato & Fullscreen
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-const [currentTime, setCurrentTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [isExpandedPlayer, setIsExpandedPlayer] = useState(false);
@@ -67,6 +69,7 @@ const [currentTime, setCurrentTime] = useState(0);
     setCognome(storedCognome);
     fetchUserData(storedNome, storedCognome);
     fetchBasi(storedNome, storedCognome);
+    fetchWarmup();
   }, [router]);
 
   useEffect(() => {
@@ -126,6 +129,23 @@ const [currentTime, setCurrentTime] = useState(0);
       console.error(err);
     } finally {
       setLoadingBasi(false);
+    }
+  };
+
+  const fetchWarmup = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("warmup")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error) {
+        setWarmupBasi(data || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingWarmup(false);
     }
   };
 
@@ -422,6 +442,60 @@ const [currentTime, setCurrentTime] = useState(0);
           </div>
         </div>
 
+        {/* WARM-UP (ESERCIZI DI RISCALDAMENTO VOCALE) */}
+        <div className="bg-white rounded-3xl border border-stone-200/80 p-6 sm:p-8 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-100 pb-4">
+            <div>
+              <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Studio & Tecnica</span>
+              <h3 className="font-serif text-xl text-stone-900 font-medium mt-0.5">Riscaldamento Vocale (Warm-up)</h3>
+            </div>
+          </div>
+
+          {loadingWarmup ? (
+            <div className="py-6 text-center text-stone-400 text-xs">Caricamento esercizi di riscaldamento...</div>
+          ) : warmupBasi.length === 0 ? (
+            <div className="py-6 text-center text-stone-400 text-xs bg-stone-50/50 rounded-2xl border border-dashed border-stone-200">
+              Nessun esercizio di riscaldamento vocale caricato al momento dal M° Carfora.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {warmupBasi.map((item) => {
+                const isThisActive = activeAudioId === item.id;
+                return (
+                  <div key={item.id} className="flex items-center justify-between p-3.5 bg-stone-50 hover:bg-stone-100/80 rounded-2xl border border-stone-200/60 transition-colors">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="w-9 h-9 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
+                        <Music className="w-4 h-4" />
+                      </div>
+                      <div className="overflow-hidden">
+                        <h4 className="font-serif text-xs font-medium text-stone-900 truncate">{item.titolo}</h4>
+                        <p className="text-[10px] text-stone-500 truncate">{item.artista} {item.tonalita ? `· ${item.tonalita}` : ''}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => togglePlayTrack(item.id, item.file_url)}
+                        className={`px-3 py-1.5 rounded-xl text-[11px] font-medium transition-all cursor-pointer ${
+                          isThisActive && isPlaying ? 'bg-amber-600 text-white' : 'bg-[#7A2238] text-white hover:bg-[#651c2e]'
+                        }`}
+                      >
+                        {isThisActive && isPlaying ? "Pausa" : "Ascolta"}
+                      </button>
+                      <button
+                        onClick={() => handleDownload(item.file_url, `${item.titolo}_${item.artista}`)}
+                        className="p-1.5 rounded-xl border border-stone-200 text-stone-600 hover:bg-white cursor-pointer"
+                        title="Scarica esercizio"
+                      >
+                        <Download className="w-3.5 h-3.5 text-[#7A2238]" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* UPLOAD */}
         <div className="space-y-4">
           <div>
@@ -578,7 +652,7 @@ const [currentTime, setCurrentTime] = useState(0);
 
       {/* MINI-PLAYER FISSO IN BASSO A DESTRA CON TASTO SCHERMO INTERO */}
       {activeAudioId && (() => {
-        const activeTrack = basi.find(b => b.id === activeAudioId);
+        const activeTrack = [...basi, ...warmupBasi].find(b => b.id === activeAudioId);
         if (!activeTrack) return null;
         return (
           <>
@@ -764,7 +838,7 @@ const [currentTime, setCurrentTime] = useState(0);
       )}
 
       <footer className="border-t border-stone-200/80 py-6 px-6 text-center text-xs text-stone-400">
-        Nuova Accademia Toscanini &middot; Canto Moderno &middot; M° Raffaela Carfora
+        Nuova Accademia Toscanini &middot; Canto Moderno &middot; M&deg; Raffaela Carfora
       </footer>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Sliders, Maximize2, Minimize2, Disc, ZoomIn, ZoomOut, Table } from "lucide-react";
+import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Sliders, Maximize2, Minimize2, Disc, Table } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -21,8 +21,8 @@ interface Allievo {
 
 interface BaseMusicale {
   id: string;
-  allievo_nome: string;
-  allievo_cognome: string;
+  allievo_nome?: string;
+  allievo_cognome?: string;
   titolo: string;
   artista?: string | null;
   tonalita?: string | null;
@@ -45,8 +45,8 @@ interface PresenzaSettimana {
   id?: string;
   allievo_nome: string;
   mese: string;
-  settimana: number; // 1, 2, 3, 4
-  stato: string; // "P", "A", "R"
+  settimana: number;
+  stato: string;
 }
 
 const GIORNI_SETTIMANA = ["Lunedì", "Mercoledì", "Giovedì", "Venerdì"];
@@ -58,89 +58,12 @@ const ORARIO_INIZIALE: Omit<LezioneOrario, "id">[] = [
   { giorno: "Mercoledì", ora: "18:00", nome_allievo: "Giulia Verdi", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
 ];
 
-const sliceAudioBuffer = (audioCtx: AudioContext, buffer: AudioBuffer, startSec: number, endSec: number) => {
-  const sampleRate = buffer.sampleRate;
-  const startFrame = Math.floor(startSec * sampleRate);
-  const endFrame = Math.floor(endSec * sampleRate);
-  const frameCount = Math.max(1, endFrame - startFrame);
-
-  const newBuffer = audioCtx.createBuffer(
-    buffer.numberOfChannels,
-    frameCount,
-    sampleRate
-  );
-
-  for (let i = 0; i < buffer.numberOfChannels; i++) {
-    const channelData = buffer.getChannelData(i);
-    const newChannelData = newBuffer.getChannelData(i);
-    for (let j = 0; j < frameCount; j++) {
-      newChannelData[j] = channelData[startFrame + j] || 0;
-    }
-  }
-  return newBuffer;
-};
-
-const bufferToWav = (buffer: AudioBuffer): Blob => {
-  const numOfChan = buffer.numberOfChannels;
-  const length = buffer.length * numOfChan * 2 + 44;
-  const out = new DataView(new ArrayBuffer(length));
-  let channels = [];
-  let sampleRate = buffer.sampleRate;
-  let offset = 0;
-  let pos = 0;
-
-  function writeString(str: string) {
-    for (let i = 0; i < str.length; i++) {
-      out.setUint8(pos++, str.charCodeAt(i));
-    }
-  }
-
-  function setUint16(data: number) {
-    out.setUint16(pos, data, true);
-    pos += 2;
-  }
-
-  function setUint32(data: number) {
-    out.setUint32(pos, data, true);
-    pos += 4;
-  }
-
-  writeString('RIFF');
-  setUint32(length - 8);
-  writeString('WAVE');
-  writeString('fmt ');
-  setUint32(16);
-  setUint16(1);
-  setUint16(numOfChan);
-  setUint32(sampleRate);
-  setUint32(sampleRate * 2 * numOfChan);
-  setUint16(numOfChan * 2);
-  setUint16(16);
-  writeString('data');
-  setUint32(length - pos - 4);
-
-  for (let i = 0; i < buffer.numberOfChannels; i++) {
-    channels.push(buffer.getChannelData(i));
-  }
-
-  while (pos < length) {
-    for (let i = 0; i < numOfChan; i++) {
-      let sample = Math.max(-1, Math.min(1, channels[i][offset] || 0));
-      sample = (sample < 0 ? sample * 32768 : sample * 32767);
-      out.setInt16(pos, sample, true);
-      pos += 2;
-    }
-    offset++;
-  }
-
-  return new Blob([out.buffer], { type: 'audio/wav' });
-};
-
 export default function MaestraDashboardPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"orario" | "registro" | "allievi">("orario");
+  const [activeTab, setActiveTab] = useState<"orario" | "registro" | "allievi" | "warmup">("orario");
   const [allievi, setAllievi] = useState<Allievo[]>([]);
   const [basi, setBasi] = useState<BaseMusicale[]>([]);
+  const [warmupBasi, setWarmupBasi] = useState<BaseMusicale[]>([]);
   const [orarioList, setOrarioList] = useState<LezioneOrario[]>([]);
   const [presenzeMensili, setPresenzeMensili] = useState<PresenzaSettimana[]>([]);
   const [selectedMese, setSelectedMese] = useState("Settembre");
@@ -168,10 +91,18 @@ export default function MaestraDashboardPage() {
   const [nuovoCorso, setNuovoCorso] = useState("");
   const [nuovoTipoModifica, setNuovoTipoModifica] = useState("normale");
 
+  // YouTube States
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [isConvertingYoutube, setIsConvertingYoutube] = useState(false);
   const [ytTitolo, setYtTitolo] = useState("");
   const [ytArtista, setYtArtista] = useState("");
+
+  // Warmup form states
+  const [warmupTitolo, setWarmupTitolo] = useState("");
+  const [warmupArtista, setWarmupArtista] = useState("M° Raffaela Carfora");
+  const [warmupTonalita, setWarmupTonalita] = useState("");
+  const [warmupFile, setWarmupFile] = useState<File | null>(null);
+  const [isUploadingWarmup, setIsUploadingWarmup] = useState(false);
 
   const [titoloBase, setTitoloBase] = useState("");
   const [artistaBase, setArtistaBase] = useState("");
@@ -190,16 +121,8 @@ export default function MaestraDashboardPage() {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
-  const [isExpandedPlayer, setIsExpandedPlayer] = useState(false);
-
-  // Trimming states
-  const [trimStart, setTrimStart] = useState<number>(0);
-  const [trimEnd, setTrimEnd] = useState<number>(0);
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
-  const [isTrimming, setIsTrimming] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioBufferRef = useRef<AudioBuffer | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -223,23 +146,6 @@ export default function MaestraDashboardPage() {
     fetchData();
   }, [router]);
 
-  useEffect(() => {
-    const channelBasi = supabase
-      .channel('realtime-maestra-basi')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'basi' }, () => { fetchBasiData(); })
-      .subscribe();
-
-    const channelOrario = supabase
-      .channel('realtime-maestra-orario')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orario' }, () => { fetchOrarioData(); })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channelBasi);
-      supabase.removeChannel(channelOrario);
-    };
-  }, []);
-
   const fetchBasiData = async () => {
     const { data: basiData } = await supabase.from("basi").select("*").order("created_at", { ascending: false });
     const safeBasi = basiData || [];
@@ -249,14 +155,9 @@ export default function MaestraDashboardPage() {
     setCommentiModificati(initialComments);
   };
 
-  const fetchOrarioData = async () => {
-    const { data: orarioData } = await supabase.from("orario").select("*").order("ora", { ascending: true });
-    if (orarioData && orarioData.length > 0) {
-      const uniqueOrario = Array.from(new Map(orarioData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values());
-      setOrarioList(uniqueOrario as LezioneOrario[]);
-    } else {
-      setOrarioList([]);
-    }
+  const fetchWarmupData = async () => {
+    const { data } = await supabase.from("warmup").select("*").order("created_at", { ascending: false });
+    setWarmupBasi(data || []);
   };
 
   const fetchData = async () => {
@@ -268,6 +169,7 @@ export default function MaestraDashboardPage() {
       if (raffaela?.avatar_url) setAvatarUrl(raffaela.avatar_url);
 
       await fetchBasiData();
+      await fetchWarmupData();
 
       const { data: presenzeData } = await supabase.from("presenze_mensili").select("*");
       if (presenzeData) setPresenzeMensili(presenzeData);
@@ -286,18 +188,109 @@ export default function MaestraDashboardPage() {
     }
   };
 
+  const handleUploadWarmup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!warmupFile || !warmupTitolo.trim()) {
+      showToast("Inserisci il titolo e seleziona un file audio.", "error");
+      return;
+    }
+
+    setIsUploadingWarmup(true);
+    try {
+      const filePath = `warmup/${Date.now()}.${warmupFile.name.split(".").pop()}`;
+      const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, warmupFile, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage.from("basi").getPublicUrl(filePath);
+
+      const newWarmup = {
+        titolo: warmupTitolo.trim(),
+        artista: warmupArtista.trim() || "M° Raffaela Carfora",
+        tonalita: warmupTonalita.trim() || null,
+        file_url: publicUrlData.publicUrl,
+      };
+
+      const { data, error } = await supabase.from("warmup").insert([newWarmup]).select();
+      if (error) throw error;
+
+      if (data) {
+        setWarmupBasi([data[0], ...warmupBasi]);
+        setWarmupTitolo("");
+        setWarmupTonalita("");
+        setWarmupFile(null);
+        showToast("Esercizio di riscaldamento caricato con successo!");
+      }
+    } catch (err: any) {
+      showToast("Errore caricamento warm-up: " + err.message, "error");
+    } finally {
+      setIsUploadingWarmup(false);
+    }
+  };
+
+  const handleDeleteWarmup = async (id: string) => {
+    if (!confirm("Vuoi eliminare questo esercizio di riscaldamento?")) return;
+    if (activeAudioId === id && audioRef.current) {
+      audioRef.current.pause();
+      setActiveAudioId(null);
+      setIsPlaying(false);
+    }
+    await supabase.from("warmup").delete().eq("id", id);
+    setWarmupBasi(warmupBasi.filter(w => w.id !== id));
+    showToast("Esercizio eliminato.");
+  };
+
+  const handleYoutubeImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!youtubeUrl.trim() || !selectedAllievo) return;
+
+    setIsConvertingYoutube(true);
+    try {
+      const res = await fetch('/api/youtube', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: youtubeUrl })
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Errore conversione YouTube');
+
+      const nuovaBaseRecord = {
+        allievo_nome: selectedAllievo.nome,
+        allievo_cognome: selectedAllievo.cognome,
+        titolo: ytTitolo.trim() || data.titolo,
+        artista: ytArtista.trim() || data.artista,
+        tonalita: tonalitaBase,
+        commento: commentoBase.trim() || null,
+        file_url: data.file_url,
+      };
+
+      const { data: inserted, error } = await supabase.from("basi").insert([nuovaBaseRecord]).select();
+      if (error) throw error;
+
+      if (inserted) {
+        setBasi([inserted[0], ...basi]);
+        setYoutubeUrl("");
+        setYtTitolo("");
+        setYtArtista("");
+        setCommentoBase("");
+        showToast("Brano importato da YouTube con successo!");
+      }
+    } catch (err: any) {
+      showToast("Errore importazione: " + err.message, "error");
+    } finally {
+      setIsConvertingYoutube(false);
+    }
+  };
+
   const handleSetPresenzaCell = async (allievoNomeKey: string, settimana: number, stato: string) => {
     const existing = presenzeMensili.find(p => p.allievo_nome.toLowerCase() === allievoNomeKey.toLowerCase() && p.mese === selectedMese && p.settimana === settimana);
 
     if (existing) {
-      const { error } = await supabase.from("presenze_mensili").update({ stato }).eq("id", existing.id);
-      if (error) {
-        console.warn("Aggiornato in memoria.");
-      }
+      await supabase.from("presenze_mensili").update({ stato }).eq("id", existing.id);
       setPresenzeMensili(presenzeMensili.map(p => p.id === existing.id ? { ...p, stato } : p));
     } else {
       const newRecord = { allievo_nome: allievoNomeKey, mese: selectedMese, settimana, stato };
-      const { data, error } = await supabase.from("presenze_mensili").insert([newRecord]).select();
+      const { data } = await supabase.from("presenze_mensili").insert([newRecord]).select();
       if (data && data[0]) {
         setPresenzeMensili([...presenzeMensili, data[0]]);
       } else {
@@ -356,51 +349,6 @@ export default function MaestraDashboardPage() {
     showToast("Informazioni aggiornate!");
   };
 
-  const handleYoutubeImport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!youtubeUrl.trim() || !selectedAllievo) return;
-
-    setIsConvertingYoutube(true);
-    try {
-      const res = await fetch('/api/youtube', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: youtubeUrl })
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Errore conversione YouTube');
-      }
-
-      const nuovaBaseRecord = {
-        allievo_nome: selectedAllievo.nome,
-        allievo_cognome: selectedAllievo.cognome,
-        titolo: ytTitolo.trim() || data.titolo,
-        artista: ytArtista.trim() || data.artista,
-        tonalita: tonalitaBase,
-        commento: commentoBase.trim() || null,
-        file_url: data.file_url,
-      };
-
-      const { data: inserted, error } = await supabase.from("basi").insert([nuovaBaseRecord]).select();
-      if (error) throw error;
-
-      if (inserted) {
-        setBasi([inserted[0], ...basi]);
-        setYoutubeUrl("");
-        setYtTitolo("");
-        setYtArtista("");
-        setCommentoBase("");
-        showToast("Brano importato con successo!");
-      }
-    } catch (err: any) {
-      showToast("Errore importazione: " + err.message, "error");
-    } finally {
-      setIsConvertingYoutube(false);
-    }
-  };
-
   const handleUploadBaseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileBase || !selectedAllievo || !titoloBase.trim()) return;
@@ -443,7 +391,11 @@ export default function MaestraDashboardPage() {
 
   const handleDeleteBase = async (id: string) => {
     if (!confirm("Vuoi davvero eliminare questa base?")) return;
-    if (activeAudioId === id) stopAudio();
+    if (activeAudioId === id) {
+      if (audioRef.current) audioRef.current.pause();
+      setActiveAudioId(null);
+      setIsPlaying(false);
+    }
     await supabase.from("basi").delete().eq("id", id);
     setBasi(basi.filter((b) => b.id !== id));
     showToast("Base eliminata.");
@@ -467,17 +419,7 @@ export default function MaestraDashboardPage() {
     }
   };
 
-  const stopAudio = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    setIsPlaying(false);
-    setActiveAudioId(null);
-    setCurrentTime(0);
-  };
-
-  const togglePlayTrack = async (id: string, url: string) => {
+  const togglePlayTrack = (id: string, url: string) => {
     if (activeAudioId === id && audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
@@ -489,64 +431,29 @@ export default function MaestraDashboardPage() {
       return;
     }
 
-    stopAudio();
+    if (audioRef.current) audioRef.current.pause();
+    const audio = new Audio(url);
+    audio.playbackRate = playbackRate;
+    audioRef.current = audio;
     setActiveAudioId(id);
-    showToast("Caricamento audio...");
+    setIsPlaying(true);
 
-    try {
-      const audio = new Audio(url);
-      audio.playbackRate = playbackRate;
-      audioRef.current = audio;
+    audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
+    audio.onloadedmetadata = () => setDuration(audio.duration);
+    audio.onended = () => { setIsPlaying(false); setCurrentTime(0); };
 
-      audio.onloadedmetadata = () => {
-        setDuration(audio.duration);
-        setTrimStart(0);
-        setTrimEnd(audio.duration);
-      };
-
-      audio.ontimeupdate = () => {
-        setCurrentTime(audio.currentTime);
-      };
-
-      audio.onended = () => {
-        setIsPlaying(false);
-        setCurrentTime(0);
-      };
-
-      const res = await fetch(url);
-      const arrayBuffer = await res.arrayBuffer();
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-      audioBufferRef.current = decodedBuffer;
-
-      await audio.play();
-      setIsPlaying(true);
-      showToast("Riproduzione avviata");
-    } catch (err) {
-      showToast("Errore caricamento file audio", "error");
-      setActiveAudioId(null);
-    }
+    audio.play().catch(() => showToast("Errore riproduzione audio", "error"));
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = parseFloat(e.target.value);
-    setCurrentTime(newTime);
-    if (audioRef.current) {
-      audioRef.current.currentTime = newTime;
-    }
+    const time = Number(e.target.value);
+    setCurrentTime(time);
+    if (audioRef.current) audioRef.current.currentTime = time;
   };
 
   const handleSkip = (seconds: number) => {
-    if (!audioRef.current) return;
-    const newTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + seconds));
-    audioRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
-  };
-
-  const changeRate = (newRate: number) => {
-    setPlaybackRate(newRate);
     if (audioRef.current) {
-      audioRef.current.playbackRate = newRate;
+      audioRef.current.currentTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + seconds));
     }
   };
 
@@ -590,7 +497,6 @@ export default function MaestraDashboardPage() {
       setNewOra("");
       setNuovoAllievoNome("");
       setNuovoCorso("");
-      setNuovoTipoModifica("normale");
       showToast("Lezione aggiunta!");
     }
   };
@@ -629,28 +535,20 @@ export default function MaestraDashboardPage() {
 
   const handleDeleteLezione = async (id: string) => {
     if (!confirm("Vuoi eliminare questa lezione?")) return;
-    const { error } = await supabase.from("orario").delete().eq("id", id);
-    if (error) {
-      showToast("Errore eliminazione: " + error.message, "error");
-      return;
-    }
+    await supabase.from("orario").delete().eq("id", id);
     setOrarioList(orarioList.filter((item) => item.id !== id));
     showToast("Lezione eliminata.");
   };
 
   const handleUpdateCorso = async (allievoId: string, nuovoCorso: string) => {
-    try {
-      const { error } = await supabase.from("allievi").update({ corso: nuovoCorso }).eq("id", allievoId);
-      if (error) {
-        showToast("Errore aggiornamento corso: " + error.message, "error");
-        return;
-      }
-      setAllievi(allievi.map((a) => (a.id === allievoId ? { ...a, corso: nuovoCorso } : a)));
-      if (selectedAllievo) setSelectedAllievo({ ...selectedAllievo, corso: nuovoCorso });
-      showToast("Livello corso aggiornato!");
-    } catch (err) {
-      console.error(err);
+    const { error } = await supabase.from("allievi").update({ corso: nuovoCorso }).eq("id", allievoId);
+    if (error) {
+      showToast("Errore aggiornamento corso: " + error.message, "error");
+      return;
     }
+    setAllievi(allievi.map((a) => (a.id === allievoId ? { ...a, corso: nuovoCorso } : a)));
+    if (selectedAllievo) setSelectedAllievo({ ...selectedAllievo, corso: nuovoCorso });
+    showToast("Livello corso aggiornato!");
   };
 
   const handleLogout = () => { router.push("/"); };
@@ -690,30 +588,39 @@ export default function MaestraDashboardPage() {
         <div className="hidden md:flex items-center gap-1 bg-stone-200/60 p-1 rounded-2xl">
           <button
             onClick={() => { setActiveTab("orario"); setSelectedAllievo(null); }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
               activeTab === "orario" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
             }`}
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>Orario Lezioni</span>
+            <span>Orario</span>
           </button>
           <button
             onClick={() => { setActiveTab("registro"); setSelectedAllievo(null); }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
               activeTab === "registro" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
             }`}
           >
             <Table className="w-3.5 h-3.5" />
-            <span>Registro per Giornata</span>
+            <span>Registro</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab("warmup"); setSelectedAllievo(null); }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+              activeTab === "warmup" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
+            }`}
+          >
+            <Music className="w-3.5 h-3.5" />
+            <span>Warm-up</span>
           </button>
           <button
             onClick={() => setActiveTab("allievi")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
               activeTab === "allievi" || selectedAllievo ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>Archivio Allievi ({filteredAllievi.length})</span>
+            <span>Allievi ({filteredAllievi.length})</span>
           </button>
         </div>
 
@@ -723,7 +630,7 @@ export default function MaestraDashboardPage() {
               {avatarUrl ? (
                 <Image src={avatarUrl} alt="Profilo" fill sizes="36px" className="object-cover" />
               ) : (
-                <Image src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTZ8MHwxfHNlYXJjaHwxfHxwb3J0cmFpdHxlbnwwfHx8fDE3ODc4MzA0Mjd8MA&ixlib=rb-4.1.0&q=85" alt="Profilo" fill sizes="36px" className="object-cover" />
+                <Image src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?crop=entropy&cs=srgb&fm=jpg" alt="Profilo" fill sizes="36px" className="object-cover" />
               )}
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
                 <Camera className="w-4 h-4" />
@@ -748,11 +655,12 @@ export default function MaestraDashboardPage() {
       </header>
 
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-12 space-y-10 pb-32">
-
-        <div className="flex md:hidden items-center gap-2 bg-stone-200/60 p-1 rounded-2xl w-full">
+        
+        {/* Mobile Navbar */}
+        <div className="flex md:hidden items-center gap-1 bg-stone-200/60 p-1 rounded-2xl w-full overflow-x-auto">
           <button
             onClick={() => { setActiveTab("orario"); setSelectedAllievo(null); }}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-[11px] font-medium transition-all ${
               activeTab === "orario" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"
             }`}
           >
@@ -761,7 +669,7 @@ export default function MaestraDashboardPage() {
           </button>
           <button
             onClick={() => { setActiveTab("registro"); setSelectedAllievo(null); }}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-[11px] font-medium transition-all ${
               activeTab === "registro" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"
             }`}
           >
@@ -769,8 +677,17 @@ export default function MaestraDashboardPage() {
             <span>Registro</span>
           </button>
           <button
+            onClick={() => { setActiveTab("warmup"); setSelectedAllievo(null); }}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-[11px] font-medium transition-all ${
+              activeTab === "warmup" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"
+            }`}
+          >
+            <Music className="w-3.5 h-3.5" />
+            <span>Warm-up</span>
+          </button>
+          <button
             onClick={() => setActiveTab("allievi")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium transition-all ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-[11px] font-medium transition-all ${
               activeTab === "allievi" || selectedAllievo ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"
             }`}
           >
@@ -779,7 +696,114 @@ export default function MaestraDashboardPage() {
           </button>
         </div>
 
-        {/* REGISTRO ORDINATO PER GIORNATA */}
+        {/* TAB WARMUP */}
+        {activeTab === "warmup" && !selectedAllievo && (
+          <div className="space-y-8">
+            <div>
+              <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Gestione Didattica</span>
+              <h2 className="text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
+                Esercizi di <span className="italic font-light">Riscaldamento Vocale</span>
+              </h2>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-stone-200/80 p-6 sm:p-8 shadow-sm space-y-4">
+              <h3 className="text-xs font-bold tracking-widest text-[#7A2238] uppercase flex items-center gap-2">
+                <Upload className="w-4 h-4" /> Carica Nuovo Esercizio Warm-up
+              </h3>
+              <form onSubmit={handleUploadWarmup} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Titolo Esercizio</label>
+                  <input
+                    type="text" value={warmupTitolo} onChange={(e) => setWarmupTitolo(e.target.value)}
+                    placeholder="es. Riscaldamento Legato" required
+                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Tonalità (Opzionale)</label>
+                  <input
+                    type="text" value={warmupTonalita} onChange={(e) => setWarmupTonalita(e.target.value)}
+                    placeholder="es. C Major"
+                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">File Audio (MP3/WAV)</label>
+                  <input
+                    type="file" accept="audio/*" onChange={(e) => setWarmupFile(e.target.files?.[0] || null)} required
+                    className="w-full text-xs text-stone-500 file:mr-2 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#7A2238]/10 file:text-[#7A2238] cursor-pointer"
+                  />
+                </div>
+
+                <button
+                  type="submit" disabled={isUploadingWarmup}
+                  className="py-3 px-6 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white font-medium text-xs transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  {isUploadingWarmup ? "Caricamento..." : "Carica Warm-up"}
+                </button>
+              </form>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold tracking-widest text-stone-500 uppercase">Esercizi Attivi per gli Allievi ({warmupBasi.length})</h3>
+              {warmupBasi.length === 0 ? (
+                <div className="bg-white rounded-3xl border border-stone-200/80 p-12 text-center space-y-3 shadow-sm">
+                  <Music className="w-8 h-8 text-stone-300 mx-auto" />
+                  <p className="text-stone-800 font-medium text-sm">Nessun esercizio di riscaldamento caricato</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {warmupBasi.map((item) => {
+                    const isThisActive = activeAudioId === item.id;
+                    return (
+                      <div key={item.id} className="bg-white rounded-2xl border border-stone-200/80 p-5 flex items-center justify-between gap-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
+                            <FileAudio className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="font-serif text-base text-stone-900 font-medium">{item.titolo}</h4>
+                            <p className="text-xs text-stone-500">{item.artista} {item.tonalita ? `· ${item.tonalita}` : ''}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => togglePlayTrack(item.id, item.file_url)}
+                            className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                              isThisActive && isPlaying ? 'bg-amber-600 text-white' : 'bg-[#7A2238] text-white hover:bg-[#651c2e]'
+                            }`}
+                          >
+                            {isThisActive && isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                            <span>{isThisActive && isPlaying ? "Pausa" : "Ascolta"}</span>
+                          </button>
+                          <button
+                            onClick={() => handleDownload(item.file_url, `${item.titolo}_warmup`)}
+                            className="p-2.5 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-50 cursor-pointer"
+                            title="Scarica"
+                          >
+                            <Download className="w-4 h-4 text-[#7A2238]" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteWarmup(item.id)}
+                            className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 cursor-pointer"
+                            title="Elimina"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* REGISTRO PER GIORNATA */}
         {activeTab === "registro" && !selectedAllievo && (
           <div className="space-y-8">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -903,6 +927,7 @@ export default function MaestraDashboardPage() {
           </div>
         )}
 
+        {/* ORARIO LEZIONI */}
         {activeTab === "orario" && !selectedAllievo && (
           <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -1021,6 +1046,7 @@ export default function MaestraDashboardPage() {
           </div>
         )}
 
+        {/* ARCHIVIO ALLIEVI */}
         {activeTab === "allievi" && !selectedAllievo && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -1053,8 +1079,8 @@ export default function MaestraDashboardPage() {
                 {filteredAllievi.map((allievo) => {
                   const basiAllievo = basi.filter(
                     (b) =>
-                      b.allievo_nome.toLowerCase() === allievo.nome.toLowerCase() &&
-                      b.allievo_cognome.toLowerCase() === allievo.cognome.toLowerCase()
+                      b.allievo_nome?.toLowerCase() === allievo.nome.toLowerCase() &&
+                      b.allievo_cognome?.toLowerCase() === allievo.cognome.toLowerCase()
                   );
                   const badgeStyle = getCardStyle("normale", allievo.corso || "Base");
 
@@ -1109,6 +1135,7 @@ export default function MaestraDashboardPage() {
           </div>
         )}
 
+        {/* DETTAGLIO SINGOLO ALLIEVO (CON YOUTUBE IMPORTER RESTORATO) */}
         {selectedAllievo && (
           <div className="space-y-6">
             <button
@@ -1182,12 +1209,10 @@ export default function MaestraDashboardPage() {
               </div>
             </div>
 
-            {/* BOX YOUTUBE DOWNLOADER & MP3 CONVERTER */}
+            {/* YOUTUBE DOWNLOADER RESTORATO */}
             <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-sm space-y-4">
               <h4 className="text-xs font-bold tracking-widest text-[#7A2238] uppercase flex items-center gap-2">
-                <svg className="w-5 h-5 text-red-600" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                </svg>
+                <svg className="w-5 h-5 text-red-600" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
                 YouTube Downloader & Convertitore MP3 per {selectedAllievo.nome}
               </h4>
               <form onSubmit={handleYoutubeImport} className="space-y-4">
@@ -1205,17 +1230,12 @@ export default function MaestraDashboardPage() {
                     <input type="text" value={ytArtista} onChange={(e) => setYtArtista(e.target.value)} placeholder="es. Giorgia" className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Tonalità Consigliata</label>
+                    <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Tonalità</label>
                     <input type="text" value={tonalitaBase} onChange={(e) => setTonalitaBase(e.target.value)} placeholder="es. A major, -1" className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Commento / Nota per l'allievo</label>
-                  <textarea value={commentoBase} onChange={(e) => setCommentoBase(e.target.value)} placeholder="Note di studio..." rows={2} className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none resize-none" />
-                </div>
                 <button type="submit" disabled={isConvertingYoutube} className="w-full py-3 px-6 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50">
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-                  <span>{isConvertingYoutube ? "Estrazione ed elaborazione audio in corso..." : "Estrai MP3 da YouTube e Assegna"}</span>
+                  <span>{isConvertingYoutube ? "Estrazione ed elaborazione audio..." : "Estrai MP3 da YouTube e Assegna"}</span>
                 </button>
               </form>
             </div>
@@ -1230,12 +1250,10 @@ export default function MaestraDashboardPage() {
                     <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Titolo Brano</label>
                     <input type="text" value={titoloBase} onChange={(e) => setTitoloBase(e.target.value)} placeholder="es. Brano" required className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
                   </div>
-
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Artista</label>
                     <input type="text" value={artistaBase} onChange={(e) => setArtistaBase(e.target.value)} placeholder="es. Autore" className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
                   </div>
-
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Tonalità</label>
                     <input type="text" value={tonalitaBase} onChange={(e) => setTonalitaBase(e.target.value)} placeholder="es. A major, -1" className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
@@ -1243,7 +1261,7 @@ export default function MaestraDashboardPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Commento / Note di miglioramento per l'allievo</label>
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Commento / Note per l'allievo</label>
                   <textarea value={commentoBase} onChange={(e) => setCommentoBase(e.target.value)} placeholder="es. Lavora di più sull'intonazione..." rows={2} className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none resize-none" />
                 </div>
 
@@ -1252,7 +1270,6 @@ export default function MaestraDashboardPage() {
                     <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">File Audio (MP3, WAV)</label>
                     <input type="file" accept="audio/*,.pdf" onChange={(e) => setFileBase(e.target.files?.[0] || null)} required className="w-full text-xs text-stone-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#7A2238]/10 file:text-[#7A2238] cursor-pointer" />
                   </div>
-
                   <button type="submit" disabled={isUploadingBase} className="py-3 px-6 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white font-medium text-xs transition-all shadow-sm cursor-pointer disabled:opacity-50">
                     {isUploadingBase ? "Caricamento..." : "Carica Base & Commento"}
                   </button>
@@ -1262,12 +1279,9 @@ export default function MaestraDashboardPage() {
 
             <div className="space-y-4 pt-2">
               <h4 className="text-xs font-bold tracking-widest text-stone-500 uppercase">Basi caricate da {selectedAllievo.nome}</h4>
-
               {(() => {
                 const basiAllievo = basi.filter(
-                  (b) =>
-                    b.allievo_nome.toLowerCase() === selectedAllievo.nome.toLowerCase() &&
-                    b.allievo_cognome.toLowerCase() === selectedAllievo.cognome.toLowerCase()
+                  (b) => b.allievo_nome?.toLowerCase() === selectedAllievo.nome.toLowerCase() && b.allievo_cognome?.toLowerCase() === selectedAllievo.cognome.toLowerCase()
                 );
 
                 if (basiAllievo.length === 0) {
@@ -1283,7 +1297,6 @@ export default function MaestraDashboardPage() {
                   <div className="grid grid-cols-1 gap-4">
                     {basiAllievo.map((item) => {
                       const isThisActive = activeAudioId === item.id;
-
                       return (
                         <div key={item.id} className="bg-white rounded-2xl border border-stone-200/80 p-5 space-y-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1309,12 +1322,10 @@ export default function MaestraDashboardPage() {
                                 {isThisActive && isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                                 <span>{isThisActive && isPlaying ? "Pausa" : "Ascolta"}</span>
                               </button>
-
                               <button onClick={() => handleDownload(item.file_url, `${item.titolo}_${item.artista}`)} className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#7A2238] text-white text-xs font-medium hover:bg-[#651c2e] cursor-pointer">
                                 <Download className="w-3.5 h-3.5" />
                                 <span>Scarica</span>
                               </button>
-
                               <button onClick={() => handleDeleteBase(item.id)} className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium hover:bg-red-100 cursor-pointer">
                                 <Trash2 className="w-3.5 h-3.5" />
                                 <span>Elimina</span>
@@ -1354,155 +1365,56 @@ export default function MaestraDashboardPage() {
 
       {/* MINI-PLAYER FISSO IN BASSO A DESTRA */}
       {activeAudioId && (() => {
-        const activeTrack = basi.find(b => b.id === activeAudioId);
+        const activeTrack = [...basi, ...warmupBasi].find(b => b.id === activeAudioId);
         if (!activeTrack) return null;
         return (
-          <>
-            <div className="fixed bottom-6 right-6 z-50 bg-white border border-stone-200 shadow-2xl rounded-2xl p-4 w-80 sm:w-96 space-y-3 animate-fadeIn">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-bold tracking-widest text-[#7A2238] uppercase">
-                  Allievo: {activeTrack.allievo_nome} {activeTrack.allievo_cognome}
-                </span>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => setIsExpandedPlayer(true)} className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer" title="Schermo intero">
-                    <Maximize2 className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => { stopAudio(); setIsExpandedPlayer(false); }} className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer" title="Chiudi">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
-                  <Disc className="w-5 h-5 animate-spin" />
-                </div>
-                <div className="overflow-hidden flex-1">
-                  <h5 className="font-serif text-sm font-medium text-stone-900 truncate">{activeTrack.titolo}</h5>
-                  <p className="text-[11px] text-stone-500 truncate">{activeTrack.artista}</p>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <input
-                  type="range"
-                  min={0}
-                  max={duration || 100}
-                  value={currentTime}
-                  onChange={handleSeek}
-                  className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#7A2238]"
-                />
-                <div className="flex justify-between text-[10px] text-stone-400 font-medium">
-                  <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <div className="flex items-center gap-1.5">
-                  <button onClick={() => handleSkip(-10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg cursor-pointer" title="-10 secondi"><RotateCcw className="w-3.5 h-3.5" /></button>
-                  <button onClick={() => handleSkip(10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg cursor-pointer" title="+10 secondi"><RotateCw className="w-3.5 h-3.5" /></button>
-                </div>
-                <button
-                  onClick={() => togglePlayTrack(activeTrack.id, activeTrack.file_url)}
-                  className="px-4 py-1.5 bg-[#7A2238] text-white text-xs font-medium rounded-xl flex items-center gap-1 cursor-pointer"
-                >
-                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                  <span>{isPlaying ? "Pausa" : "Play"}</span>
-                </button>
-              </div>
-            </div>
-
-            {isExpandedPlayer && (
-              <div className="fixed inset-0 z-50 bg-[#FCFBF9] flex flex-col justify-between p-6 sm:p-12 animate-fadeIn overflow-y-auto">
-                <div className="flex items-center justify-between max-w-4xl w-full mx-auto">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center"><Music className="w-5 h-5" /></div>
-                    <div>
-                      <h4 className="text-xs font-bold uppercase tracking-widest text-[#7A2238]">Player & Editor Audio</h4>
-                      <p className="text-[11px] text-stone-500">Allievo: {activeTrack.allievo_nome} {activeTrack.allievo_cognome}</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setIsExpandedPlayer(false)} className="p-3 bg-stone-200/60 hover:bg-stone-200 rounded-full cursor-pointer"><Minimize2 className="w-5 h-5" /></button>
-                </div>
-
-                <div className="max-w-2xl w-full mx-auto text-center space-y-6 my-auto py-8">
-                  <div className="w-24 h-24 sm:w-32 sm:h-32 mx-auto rounded-3xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shadow-inner">
-                    <Disc className="w-12 h-12 sm:w-16 sm:h-16 animate-spin" />
-                  </div>
-
-                  <div className="space-y-2">
-                    <h2 className="text-2xl sm:text-3xl font-serif font-medium">{activeTrack.titolo}</h2>
-                    <p className="text-sm text-stone-500">{activeTrack.artista}</p>
-                  </div>
-
-                  <div className="bg-white border border-stone-200 p-5 rounded-3xl space-y-2 shadow-sm text-left">
-                    <div className="flex items-center justify-between text-xs font-bold text-stone-700">
-                      <span>Progresso Brano</span>
-                      <span className="text-[#7A2238]">{formatTime(currentTime)} / {formatTime(duration)}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={duration || 100}
-                      value={currentTime}
-                      onChange={handleSeek}
-                      className="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#7A2238]"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-center gap-6 pt-2">
-                    <button onClick={() => handleSkip(-10)} className="p-3 bg-stone-100 hover:bg-stone-200 rounded-full cursor-pointer"><RotateCcw className="w-5 h-5" /></button>
-                    <button onClick={() => togglePlayTrack(activeTrack.id, activeTrack.file_url)} className="w-16 h-16 bg-[#7A2238] text-white rounded-full flex items-center justify-center shadow-xl cursor-pointer hover:scale-105">
-                      {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-1" />}
-                    </button>
-                    <button onClick={() => handleSkip(10)} className="p-3 bg-stone-100 hover:bg-stone-200 rounded-full cursor-pointer"><RotateCw className="w-5 h-5" /></button>
-                  </div>
-                </div>
-
-                <div className="text-center text-xs text-stone-400 py-4">Nuova Accademia Toscanini &middot; Canto Moderno</div>
-              </div>
-            )}
-          </>
-        );
-      })()}
-
-      {editingLezione && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-8 space-y-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-4 border-b border-stone-100">
-              <h3 className="font-serif text-xl text-stone-900 font-medium">Modifica Lezione</h3>
-              <button onClick={() => setEditingLezione(null)} className="text-stone-400 hover:text-stone-705 cursor-pointer">
-                <X className="w-5 h-5" />
+          <div className="fixed bottom-6 right-6 z-50 bg-white border border-stone-200 shadow-2xl rounded-2xl p-4 w-80 sm:w-96 space-y-3 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-bold tracking-widest text-[#7A2238] uppercase">
+                {activeTrack.allievo_nome ? `Allievo: ${activeTrack.allievo_nome}` : "Warm-up Vocale"}
+              </span>
+              <button onClick={() => { if(audioRef.current) audioRef.current.pause(); setActiveAudioId(null); setIsPlaying(false); }} className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer">
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEditLezione} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Giorno</label>
-                <select value={editGiorno} onChange={(e) => setEditGiorno(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none">
-                  {GIORNI_SETTIMANA.map((g) => (<option key={g} value={g}>{g}</option>))}
-                </select>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
+                <Disc className="w-5 h-5 animate-spin" />
               </div>
+              <div className="overflow-hidden flex-1">
+                <h5 className="font-serif text-sm font-medium text-stone-900 truncate">{activeTrack.titolo}</h5>
+                <p className="text-[11px] text-stone-500 truncate">{activeTrack.artista}</p>
+              </div>
+            </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Orario</label>
-                <input type="text" value={editOra} onChange={(e) => setEditOra(e.target.value)} required className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
+            <div className="space-y-1">
+              <input
+                type="range" min={0} max={duration || 100} value={currentTime} onChange={handleSeek}
+                className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#7A2238]"
+              />
+              <div className="flex justify-between text-[10px] text-stone-400 font-medium">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
               </div>
+            </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Allievo / Corso</label>
-                <input type="text" value={editNome} onChange={(e) => setEditNome(e.target.value)} required className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
+            <div className="flex items-center justify-between pt-1">
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => handleSkip(-10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg cursor-pointer"><RotateCcw className="w-3.5 h-3.5" /></button>
+                <button onClick={() => handleSkip(10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg cursor-pointer"><RotateCw className="w-3.5 h-3.5" /></button>
               </div>
-
-              <div className="pt-4 flex items-center justify-end gap-3">
-                <button type="button" onClick={() => setEditingLezione(null)} className="px-5 py-3 rounded-xl border border-stone-200 text-stone-600 text-xs font-medium hover:bg-stone-50 cursor-pointer">Annulla</button>
-                <button type="submit" className="px-6 py-3 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white text-xs font-medium shadow-sm cursor-pointer">Salva Modifiche</button>
-              </div>
-            </form>
+              <button
+                onClick={() => togglePlayTrack(activeTrack.id, activeTrack.file_url)}
+                className="px-4 py-1.5 bg-[#7A2238] text-white text-xs font-medium rounded-xl flex items-center gap-1 cursor-pointer"
+              >
+                {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                <span>{isPlaying ? "Pausa" : "Play"}</span>
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {toast && (
         <div className={`fixed bottom-6 left-6 z-50 px-5 py-3 rounded-2xl text-xs font-medium shadow-2xl transition-all ${

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import PWARegister from "@/components/PWARegister";
+
 
 export const metadata: Metadata = {
   title: "Caricamento Basi",
@@ -23,7 +25,6 @@ export const metadata: Metadata = {
     icon: '/logo-2.png', // L'icona nella linguetta del browser
   },
 };
-
 export default function RootLayout({
   children,
 }: {
@@ -31,7 +32,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="it">
-      <body>{children}</body>
+      <body>
+        <PWARegister />
+        {children}
+      </body>
     </html>
   );
 }

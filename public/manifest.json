@@ -1,0 +1,21 @@
+{
+  "name": "Gestione Basi Musicali",
+  "short_name": "Basi Musicali",
+  "description": "Gestione basi musicali degli allievi della Nuova Accademia, che studiano con il M° R. Carfora",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FCFBF9",
+  "theme_color": "#7A2238",
+  "icons": [
+    {
+      "src": "/logo-2.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo-2.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

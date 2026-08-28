@@ -1,0 +1,593 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Music, Upload, LogOut, FileAudio, Camera, MessageSquare, Download, Trash2, Play } from "lucide-react";
+import { createClient } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+interface BaseMusicale {
+  id: string;
+  titolo: string;
+  artista: string;
+  tonalita?: string | null;
+  file_url: string;
+  commento?: string | null;
+  created_at: string;
+}
+
+export default function DashboardPage() {
+  const router = useRouter();
+  const [nome, setNome] = useState("");
+  const [cognome, setCognome] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [titolo, setTitolo] = useState("");
+  const [artista, setArtista] = useState("");
+  const [tonalita, setTonalita] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [basi, setBasi] = useState<BaseMusicale[]>([]);
+  const [loadingBasi, setLoadingBasi] = useState(true);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  useEffect(() => {
+    const storedNome = localStorage.getItem("allievo_nome");
+    const storedCognome = localStorage.getItem("allievo_cognome");
+    
+    if (!storedNome || !storedCognome) {
+      router.push("/");
+      return;
+    }
+
+    setNome(storedNome);
+    setCognome(storedCognome);
+    fetchUserData(storedNome, storedCognome);
+    fetchBasi(storedNome, storedCognome);
+  }, [router]);
+
+  useEffect(() => {
+    if (!nome || !cognome) return;
+
+    const channel = supabase
+      .channel('realtime-allievo-basi')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'basi' },
+        () => {
+          fetchBasi(nome, cognome);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [nome, cognome]);
+
+  const fetchUserData = async (n: string, c: string) => {
+    const { data } = await supabase
+      .from("allievi")
+      .select("avatar_url")
+      .ilike("nome", n)
+      .ilike("cognome", c)
+      .maybeSingle();
+
+    if (data?.avatar_url) {
+      setAvatarUrl(data.avatar_url);
+    }
+  };
+
+  const fetchBasi = async (n: string, c: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("basi")
+        .select("*")
+        .ilike("allievo_nome", n)
+        .ilike("allievo_cognome", c)
+        .order("created_at", { ascending: false });
+
+      if (!error) {
+        setBasi(data || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingBasi(false);
+    }
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const avatarFile = e.target.files?.[0];
+    if (!avatarFile) return;
+
+    if (avatarFile.size > 10 * 1024 * 1024) {
+      showToast("L'immagine è troppo grande (max 10MB).", "error");
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const fileExt = avatarFile.name.split(".").pop();
+      const fileName = `avatar-${Date.now()}.${fileExt}`;
+      const filePath = `${nome}_${cognome}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, avatarFile, { upsert: true });
+
+      if (uploadError) {
+        showToast("Errore caricamento foto: " + uploadError.message, "error");
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const newAvatarUrl = publicUrlData.publicUrl;
+
+      await supabase
+        .from("allievi")
+        .update({ avatar_url: newAvatarUrl })
+        .ilike("nome", nome)
+        .ilike("cognome", cognome);
+
+      setAvatarUrl(newAvatarUrl);
+      showToast("Foto profilo aggiornata!");
+    } catch (err) {
+      console.error(err);
+      showToast("Errore imprevisto.", "error");
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  // Funzione nativa per comprimere e alleggerire l'audio nel browser se supera i limiti
+  const compressAudioIfNeeded = async (audioFile: File): Promise<File> => {
+    if (audioFile.size <= 45 * 1024 * 1024 || !audioFile.type.startsWith("audio/")) {
+      return audioFile; // Se è già sotto i 45MB procede normalmente
+    }
+
+    showToast("File pesante rilevato: compressione automatica in corso...");
+    try {
+      const arrayBuffer = await audioFile.arrayBuffer();
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+      // Ricampionamento a 22.05kHz in mono per ridurre drasticamente la dimensione
+      const sampleRate = 22050;
+      const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * sampleRate, sampleRate);
+      const source = offlineCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(offlineCtx.destination);
+      source.start(0);
+
+      const renderedBuffer = await offlineCtx.startRendering();
+      const wavBlob = bufferToWav(renderedBuffer);
+
+      return new File([wavBlob], audioFile.name.replace(/\.[^/.]+$/, "") + "_ottimizzato.wav", {
+        type: "audio/wav",
+      });
+    } catch (err) {
+      console.error("Errore durante la compressione:", err);
+      return audioFile; // Fallback al file originale se fallisce
+    }
+  };
+
+  // Utility per convertire il buffer audio in Blob WAV
+  const bufferToWav = (buffer: AudioBuffer) => {
+    const numOfChan = buffer.numberOfChannels;
+    const length = buffer.length * numOfChan * 2 + 44;
+    const out = new DataView(new ArrayBuffer(length));
+    let channels = [];
+    let sampleRate = buffer.sampleRate;
+    let offset = 0;
+    let pos = 0;
+
+    writeString('RIFF'); pos += 4;
+    out.setUint32(pos, length - 8, true); pos += 4;
+    writeString('WAVE'); pos += 4;
+    writeString('fmt '); pos += 4;
+    out.setUint32(pos, 16, true); pos += 4;
+    out.setUint16(pos, 1, true); pos += 2;
+    out.setUint16(pos, numOfChan, true); pos += 2;
+    out.setUint32(pos, sampleRate, true); pos += 4;
+    out.setUint32(pos, sampleRate * 2 * numOfChan, true); pos += 4;
+    out.setUint16(pos, numOfChan * 2, true); pos += 2;
+    out.setUint16(pos, 16, true); pos += 2;
+    writeString('data'); pos += 4;
+    out.setUint32(pos, length - pos - 4, true); pos += 4;
+
+    for (let i = 0; i < buffer.numberOfChannels; i++) {
+      channels.push(buffer.getChannelData(i));
+    }
+
+    while (pos < length) {
+      for (let i = 0; i < numOfChan; i++) {
+        let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+        sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767)|0;
+        out.setInt16(pos, sample, true);
+        pos += 2;
+      }
+      offset++;
+    }
+
+    return new Blob([out.buffer], { type: 'audio/wav' });
+
+    function writeString(str: string) {
+      for (let i = 0; i < str.length; i++) {
+        out.setUint8(pos++, str.charCodeAt(i));
+      }
+    }
+  };
+
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file || !titolo.trim() || !artista.trim()) {
+      showToast("Compila titolo, artista e seleziona un file.", "error");
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      // Comprime automaticamente il file se supera i limiti di Supabase
+      const fileToUpload = await compressAudioIfNeeded(file);
+
+      if (fileToUpload.size > 50 * 1024 * 1024) {
+        showToast("Il file è ancora troppo grande dopo la compressione (max 50MB).", "error");
+        setIsUploading(false);
+        return;
+      }
+
+      const fileExt = fileToUpload.name.split(".").pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `${nome}_${cognome}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("basi")
+        .upload(filePath, fileToUpload);
+
+      if (uploadError) {
+        showToast("Errore caricamento file: " + uploadError.message, "error");
+        setIsUploading(false);
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("basi")
+        .getPublicUrl(filePath);
+
+      const { error: dbError } = await supabase.from("basi").insert([
+        {
+          allievo_nome: nome,
+          allievo_cognome: cognome,
+          titolo: titolo.trim(),
+          artista: artista.trim(),
+          tonalita: tonalita.trim(),
+          file_url: publicUrlData.publicUrl,
+        },
+      ]);
+
+      if (dbError) {
+        showToast("Errore salvataggio dati: " + dbError.message, "error");
+      } else {
+        showToast("Base caricata con successo!");
+        setTitolo("");
+        setArtista("");
+        setTonalita("");
+        setFile(null);
+        fetchBasi(nome, cognome);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Errore imprevisto durante l'elaborazione.", "error");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDeleteBase = async (id: string) => {
+    if (!confirm("Vuoi davvero eliminare questa base musicale?")) return;
+    const { error } = await supabase.from("basi").delete().eq("id", id);
+    if (error) {
+      showToast("Errore durante l'eliminazione: " + error.message, "error");
+      return;
+    }
+    setBasi(basi.filter((b) => b.id !== id));
+    showToast("Base eliminata con successo.");
+  };
+
+  const handleDownload = async (url: string, filename: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename || 'base-musicale';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+      showToast("Download avviato!");
+    } catch (err) {
+      window.open(url, '_blank');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.clear();
+    router.push("/");
+  };
+
+  const iniziali = nome && cognome ? `${nome.charAt(0)}${cognome.charAt(0)}`.toUpperCase() : "GR";
+
+  return (
+    <div className="min-h-screen bg-[#FCFBF9] text-stone-900 flex flex-col selection:bg-[#7A2238] selection:text-white relative">
+      <header className="border-b border-stone-200/80 bg-[#FCFBF9]/80 backdrop-blur-md sticky top-0 z-30 px-6 lg:px-16 py-5 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-black flex items-center justify-center shadow-sm border border-stone-200">
+            <Image 
+              src="/logo-2.png" 
+              alt="Nuova Accademia Toscanini Logo" 
+              fill 
+              className="object-contain p-1" 
+            />
+          </div>
+          <div>
+            <h1 className="text-xs font-semibold tracking-[0.2em] uppercase text-stone-900">
+              Nuova Accademia Toscanini
+            </h1>
+            <p className="text-[10px] tracking-[0.15em] text-[#7A2238] uppercase font-medium">
+              Caserta · M° Raffaela Carfora
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 bg-white border border-stone-200/80 rounded-full py-1.5 pl-3 pr-4 shadow-[0_2px_4px_rgba(0,0,0,0.02)]">
+            <label className="relative w-9 h-9 rounded-full overflow-hidden bg-stone-300 text-stone-800 font-semibold text-xs flex items-center justify-center cursor-pointer group shadow-inner">
+              {avatarUrl ? (
+                <Image src={avatarUrl} alt="Profilo" fill className="object-cover" />
+              ) : (
+                <span>{iniziali}</span>
+              )}
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                <Camera className="w-4 h-4" />
+              </div>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
+            </label>
+
+            <div className="text-left">
+              <p className="text-xs font-medium text-stone-900 leading-none">
+                {nome} {cognome}
+              </p>
+              <p className="text-[10px] text-stone-400 tracking-wider uppercase mt-0.5">
+                {isUploadingAvatar ? "Aggiornamento foto..." : "Allievo/a"}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="w-10 h-10 rounded-full border border-stone-200/80 bg-white hover:border-red-200 hover:bg-red-50 hover:text-red-700 text-stone-600 flex items-center justify-center transition-all cursor-pointer shadow-xs"
+            title="Esci"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-6xl w-full mx-auto p-6 lg:p-12 space-y-12">
+        <div className="space-y-4">
+          <div>
+            <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">
+              Le tue basi
+            </span>
+            <h2 className="text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
+              Carica una nuova <span className="italic font-light">base musicale</span>
+            </h2>
+            <p className="text-stone-500 text-xs lg:text-sm font-light mt-1">
+              I file audio pesanti verranno ottimizzati automaticamente dal browser prima dell'invio.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-stone-200/80 p-8 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+            <form onSubmit={handleUpload} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              <div className="lg:col-span-5">
+                <label className="relative flex flex-col items-center justify-center p-8 border-2 border-dashed border-stone-300 rounded-2xl bg-stone-50/50 hover:bg-stone-50 transition-all cursor-pointer group min-h-55">
+                  <div className="w-12 h-12 rounded-full bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                    <Upload className="w-5 h-5" />
+                  </div>
+                  <span className="text-sm font-medium text-stone-800 text-center">
+                    {file ? file.name : "Trascina qui il tuo file"}
+                  </span>
+                  <span className="text-[11px] text-stone-400 text-center mt-1">
+                    {file ? "File pronto per il caricamento" : "o clicca per selezionarlo · MP3 · WAV"}
+                  </span>
+                  <input
+                    type="file"
+                    accept=".mp3,.wav,.m4a,audio/*"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className="lg:col-span-7 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">
+                    Titolo
+                  </label>
+                  <input
+                    type="text"
+                    value={titolo}
+                    onChange={(e) => setTitolo(e.target.value)}
+                    placeholder="es. Someone Like You"
+                    required
+                    className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#7A2238]/10 text-sm transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">
+                    Artista
+                  </label>
+                  <input
+                    type="text"
+                    value={artista}
+                    onChange={(e) => setArtista(e.target.value)}
+                    placeholder="es. Adele"
+                    required
+                    className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#7A2238]/10 text-sm transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">
+                    Tonalità (Opzionale)
+                  </label>
+                  <input
+                    type="text"
+                    value={tonalita}
+                    onChange={(e) => setTonalita(e.target.value)}
+                    placeholder="es. A major, -1"
+                    className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#7A2238]/10 text-sm transition-all"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isUploading}
+                  className="w-full flex items-center justify-center gap-2 py-4 px-6 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white font-medium transition-all shadow-md text-sm cursor-pointer active:scale-[0.99] disabled:opacity-70 mt-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>{isUploading ? "Elaborazione e caricamento..." : "Carica base"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div className="space-y-4 pt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">
+                Archivio
+              </span>
+              <h3 className="text-2xl font-serif text-stone-900 tracking-tight mt-0.5">
+                Le tue basi caricate
+              </h3>
+            </div>
+            <span className="text-xs text-stone-400 font-medium">
+              {basi.length} {basi.length === 1 ? "brano" : "brani"}
+            </span>
+          </div>
+
+          {loadingBasi ? (
+            <div className="py-12 text-center text-stone-400 text-sm">
+              Caricamento archivio...
+            </div>
+          ) : basi.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-stone-200/80 p-12 text-center space-y-3 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+              <div className="w-12 h-12 rounded-full bg-stone-100 text-stone-400 flex items-center justify-center mx-auto">
+                <Music className="w-5 h-5" />
+              </div>
+              <p className="text-stone-800 font-medium text-sm">Nessuna base caricata</p>
+              <p className="text-stone-400 text-xs">Inizia caricando il tuo primo brano qui sopra.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {basi.map((item) => (
+                <div 
+                  key={item.id}
+                  className="bg-white rounded-2xl border border-stone-200/80 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:border-[#7A2238]/30 transition-all"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
+                      <FileAudio className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-serif text-lg text-stone-900 font-medium leading-tight">
+                        {item.titolo}
+                      </h4>
+                      <p className="text-xs text-stone-500 mt-0.5">
+                        {item.artista} {item.tonalita ? `· Tonalità: ${item.tonalita}` : ""}
+                      </p>
+                      {item.commento && (
+                        <div className="mt-2 flex items-start gap-1.5 bg-[#7A2238]/5 border border-[#7A2238]/10 rounded-xl p-2.5 text-xs text-stone-700">
+                          <MessageSquare className="w-3.5 h-3.5 text-[#7A2238] shrink-0 mt-0.5" />
+                          <span><strong>Nota M° Carfora:</strong> {item.commento}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => handleDownload(item.file_url, `${item.titolo}_${item.artista}`)}
+                      className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#7A2238] text-white text-xs font-medium hover:bg-[#651c2e] transition-colors cursor-pointer shadow-xs"
+                      title="Scarica file sul dispositivo"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Scarica</span>
+                    </button>
+
+                    <a
+                      href={item.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-stone-200 text-stone-700 text-xs font-medium hover:bg-stone-50 transition-colors"
+                      title="Ascolta in una nuova scheda"
+                    >
+                      <Play className="w-3.5 h-3.5 text-[#7A2238]" />
+                      <span>Ascolta</span>
+                    </a>
+
+                    <button
+                      onClick={() => handleDeleteBase(item.id)}
+                      className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium hover:bg-red-100 transition-colors cursor-pointer"
+                      title="Elimina base"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Elimina</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
+
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-2xl text-xs font-medium shadow-2xl transition-all flex items-center gap-2 ${
+          toast.type === 'success' ? 'bg-stone-900 text-white' : 'bg-[#7A2238] text-white'
+        }`}>
+          <span>{toast.message}</span>
+        </div>
+      )}
+
+      <footer className="border-t border-stone-200/80 py-6 px-6 text-center text-xs text-stone-400">
+        Nuova Accademia Toscanini &middot; Caserta &middot; M° Raffaela Carfora
+      </footer>
+    </div>
+  );
+}

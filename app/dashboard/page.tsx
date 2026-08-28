@@ -43,7 +43,7 @@ export default function DashboardPage() {
   // Player Audio Avanzato & Fullscreen
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
+const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [isExpandedPlayer, setIsExpandedPlayer] = useState(false);

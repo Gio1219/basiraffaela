@@ -16,16 +16,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Impossibile estrarre l\'ID del video YouTube' }, { status: 400 });
     }
 
-    // Restituisce un URL audio MP3 diretto e stabile compatibile con la Web Audio API
+    const rapidApiKey = process.env.RAPIDAPI_KEY || 'dc455ebfa7mshb237d5621e51e3dp16fbb8jsna69b0b8cb898';
+    const apiHost = 'youtube-mp36.p.rapidapi.com';
+
+    const apiRes = await fetch(`https://${apiHost}/dl?id=${videoId}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-rapidapi-key': rapidApiKey,
+        'x-rapidapi-host': apiHost
+      }
+    });
+
+    const apiData = await apiRes.json();
+
+    if (!apiRes.ok || (!apiData.link && !apiData.audio)) {
+      return NextResponse.json({ error: 'Errore nella risposta di RapidAPI. Verifica l\'attivazione della sottoscrizione free sul piano.' }, { status: 500 });
+    }
+
+    const audioLink = apiData.link || apiData.audio;
+
     return NextResponse.json({
       success: true,
-      titolo: `Brano YouTube (${videoId})`,
-      artista: 'Accademia Toscanini',
-      file_url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', // Sostituibile con un link MP3 diretto del brano
-      download_url: `https://www.youtube.com/watch?v=${videoId}`
+      titolo: apiData.title || `Brano YouTube (${videoId})`,
+      artista: apiData.author || 'Accademia Toscanini',
+      file_url: audioLink,
+      download_url: url
     });
 
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Errore interno' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Errore interno del server' }, { status: 500 });
   }
 }

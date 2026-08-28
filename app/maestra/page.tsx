@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Sliders, Maximize2, Minimize2, Disc } from "lucide-react";
+import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Sliders, Maximize2, Minimize2, Disc, ZoomIn, ZoomOut, Table } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -38,23 +38,112 @@ interface LezioneOrario {
   nome_allievo: string;
   corso?: string | null;
   tipo_modifica?: string | null; 
+  stato_presenza?: string | null;
+}
+
+interface PresenzaSettimana {
+  id?: string;
+  allievo_nome: string;
+  mese: string;
+  settimana: number; // 1, 2, 3, 4
+  stato: string; // "P", "A", "R"
 }
 
 const GIORNI_SETTIMANA = ["Lunedì", "Mercoledì", "Giovedì", "Venerdì"];
 
 const ORARIO_INIZIALE: Omit<LezioneOrario, "id">[] = [
-  { giorno: "Lunedì", ora: "16:30", nome_allievo: "Maria Rossi", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Lunedì", ora: "17:15", nome_allievo: "Luca Bianchi", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Mercoledì", ora: "17:00", nome_allievo: "Maria Rossi", corso: "Professional", tipo_modifica: "normale" },
-  { giorno: "Mercoledì", ora: "18:00", nome_allievo: "Giulia Verdi", corso: "Professional", tipo_modifica: "normale" },
+  { giorno: "Lunedì", ora: "16:30", nome_allievo: "Maria Rossi", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Lunedì", ora: "17:15", nome_allievo: "Luca Bianchi", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Mercoledì", ora: "17:00", nome_allievo: "Maria Rossi", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Mercoledì", ora: "18:00", nome_allievo: "Giulia Verdi", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
 ];
+
+const sliceAudioBuffer = (audioCtx: AudioContext, buffer: AudioBuffer, startSec: number, endSec: number) => {
+  const sampleRate = buffer.sampleRate;
+  const startFrame = Math.floor(startSec * sampleRate);
+  const endFrame = Math.floor(endSec * sampleRate);
+  const frameCount = Math.max(1, endFrame - startFrame);
+
+  const newBuffer = audioCtx.createBuffer(
+    buffer.numberOfChannels,
+    frameCount,
+    sampleRate
+  );
+
+  for (let i = 0; i < buffer.numberOfChannels; i++) {
+    const channelData = buffer.getChannelData(i);
+    const newChannelData = newBuffer.getChannelData(i);
+    for (let j = 0; j < frameCount; j++) {
+      newChannelData[j] = channelData[startFrame + j] || 0;
+    }
+  }
+  return newBuffer;
+};
+
+const bufferToWav = (buffer: AudioBuffer): Blob => {
+  const numOfChan = buffer.numberOfChannels;
+  const length = buffer.length * numOfChan * 2 + 44;
+  const out = new DataView(new ArrayBuffer(length));
+  let channels = [];
+  let sampleRate = buffer.sampleRate;
+  let offset = 0;
+  let pos = 0;
+
+  function writeString(str: string) {
+    for (let i = 0; i < str.length; i++) {
+      out.setUint8(pos++, str.charCodeAt(i));
+    }
+  }
+
+  function setUint16(data: number) {
+    out.setUint16(pos, data, true);
+    pos += 2;
+  }
+
+  function setUint32(data: number) {
+    out.setUint32(pos, data, true);
+    pos += 4;
+  }
+
+  writeString('RIFF');
+  setUint32(length - 8);
+  writeString('WAVE');
+  writeString('fmt ');
+  setUint32(16);
+  setUint16(1);
+  setUint16(numOfChan);
+  setUint32(sampleRate);
+  setUint32(sampleRate * 2 * numOfChan);
+  setUint16(numOfChan * 2);
+  setUint16(16);
+  writeString('data');
+  setUint32(length - pos - 4);
+
+  for (let i = 0; i < buffer.numberOfChannels; i++) {
+    channels.push(buffer.getChannelData(i));
+  }
+
+  while (pos < length) {
+    for (let i = 0; i < numOfChan; i++) {
+      let sample = Math.max(-1, Math.min(1, channels[i][offset] || 0));
+      sample = (sample < 0 ? sample * 32768 : sample * 32767);
+      out.setInt16(pos, sample, true);
+      pos += 2;
+    }
+    offset++;
+  }
+
+  return new Blob([out.buffer], { type: 'audio/wav' });
+};
 
 export default function MaestraDashboardPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"orario" | "allievi">("orario");
+  const [activeTab, setActiveTab] = useState<"orario" | "registro" | "allievi">("orario");
   const [allievi, setAllievi] = useState<Allievo[]>([]);
   const [basi, setBasi] = useState<BaseMusicale[]>([]);
   const [orarioList, setOrarioList] = useState<LezioneOrario[]>([]);
+  const [presenzeMensili, setPresenzeMensili] = useState<PresenzaSettimana[]>([]);
+  const [selectedMese, setSelectedMese] = useState("Settembre");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAllievo, setSelectedAllievo] = useState<Allievo | null>(null);
 
@@ -79,7 +168,6 @@ export default function MaestraDashboardPage() {
   const [nuovoCorso, setNuovoCorso] = useState("");
   const [nuovoTipoModifica, setNuovoTipoModifica] = useState("normale");
 
-  // YouTube Downloader States
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [isConvertingYoutube, setIsConvertingYoutube] = useState(false);
   const [ytTitolo, setYtTitolo] = useState("");
@@ -96,21 +184,22 @@ export default function MaestraDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Web Audio API & Transpositore State
+  // Player Audio States
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
-  const [semitoni, setSemitoni] = useState<number>(0);
   const [isExpandedPlayer, setIsExpandedPlayer] = useState(false);
 
-  // Web Audio API refs
-  const audioCtxRef = useRef<AudioContext | null>(null);
+  // Trimming states
+  const [trimStart, setTrimStart] = useState<number>(0);
+  const [trimEnd, setTrimEnd] = useState<number>(0);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [isTrimming, setIsTrimming] = useState(false);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
-  const startTimeRef = useRef<number>(0);
-  const pauseOffsetRef = useRef<number>(0);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -180,6 +269,9 @@ export default function MaestraDashboardPage() {
 
       await fetchBasiData();
 
+      const { data: presenzeData } = await supabase.from("presenze_mensili").select("*");
+      if (presenzeData) setPresenzeMensili(presenzeData);
+
       const { data: orarioData } = await supabase.from("orario").select("*").order("ora", { ascending: true });
       if (orarioData && orarioData.length > 0) {
         setOrarioList(Array.from(new Map(orarioData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values()) as LezioneOrario[]);
@@ -192,6 +284,27 @@ export default function MaestraDashboardPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSetPresenzaCell = async (allievoNomeKey: string, settimana: number, stato: string) => {
+    const existing = presenzeMensili.find(p => p.allievo_nome.toLowerCase() === allievoNomeKey.toLowerCase() && p.mese === selectedMese && p.settimana === settimana);
+
+    if (existing) {
+      const { error } = await supabase.from("presenze_mensili").update({ stato }).eq("id", existing.id);
+      if (error) {
+        console.warn("Aggiornato in memoria.");
+      }
+      setPresenzeMensili(presenzeMensili.map(p => p.id === existing.id ? { ...p, stato } : p));
+    } else {
+      const newRecord = { allievo_nome: allievoNomeKey, mese: selectedMese, settimana, stato };
+      const { data, error } = await supabase.from("presenze_mensili").insert([newRecord]).select();
+      if (data && data[0]) {
+        setPresenzeMensili([...presenzeMensili, data[0]]);
+      } else {
+        setPresenzeMensili([...presenzeMensili, { id: Math.random().toString(), ...newRecord }]);
+      }
+    }
+    showToast(`Registrato [${stato}] per ${allievoNomeKey} (Settimana ${settimana})`);
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -355,117 +468,85 @@ export default function MaestraDashboardPage() {
   };
 
   const stopAudio = () => {
-    if (sourceNodeRef.current) {
-      try { sourceNodeRef.current.stop(); } catch (e) {}
-      sourceNodeRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
     }
     setIsPlaying(false);
     setActiveAudioId(null);
     setCurrentTime(0);
-    pauseOffsetRef.current = 0;
-  };
-
-  const playAudioBuffer = (buffer: AudioBuffer, offset = 0, rate = playbackRate, semi = semitoni) => {
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    const ctx = audioCtxRef.current;
-    if (ctx.state === 'suspended') ctx.resume();
-
-    if (sourceNodeRef.current) {
-      try { sourceNodeRef.current.stop(); } catch (e) {}
-    }
-
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.playbackRate.value = rate;
-    source.detune.value = semi * 100;
-
-    source.connect(ctx.destination);
-    source.start(0, offset);
-
-    startTimeRef.current = ctx.currentTime - offset;
-    sourceNodeRef.current = source;
-    setIsPlaying(true);
-
-    source.onended = () => {
-      if (sourceNodeRef.current === source) {
-        setIsPlaying(false);
-        setCurrentTime(0);
-        pauseOffsetRef.current = 0;
-      }
-    };
   };
 
   const togglePlayTrack = async (id: string, url: string) => {
-    if (activeAudioId === id) {
+    if (activeAudioId === id && audioRef.current) {
       if (isPlaying) {
-        if (audioCtxRef.current) {
-          pauseOffsetRef.current = audioCtxRef.current.currentTime - startTimeRef.current;
-        }
-        if (sourceNodeRef.current) {
-          try { sourceNodeRef.current.stop(); } catch (e) {}
-        }
+        audioRef.current.pause();
         setIsPlaying(false);
       } else {
-        if (audioBufferRef.current) {
-          playAudioBuffer(audioBufferRef.current, pauseOffsetRef.current, playbackRate, semitoni);
-        }
+        audioRef.current.play();
+        setIsPlaying(true);
       }
-      return;
-    }
-
-    if (url.includes('youtube.com/watch') || url.includes('youtu.be')) {
-      showToast("Errore: Link YouTube non convertito in file audio diretto.", "error");
       return;
     }
 
     stopAudio();
     setActiveAudioId(id);
-    showToast("Caricamento audio in corso...");
+    showToast("Caricamento audio...");
 
     try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Errore di rete durante il download del file.");
-      const arrayBuffer = await response.arrayBuffer();
+      const audio = new Audio(url);
+      audio.playbackRate = playbackRate;
+      audioRef.current = audio;
 
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const decodedBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer);
+      audio.onloadedmetadata = () => {
+        setDuration(audio.duration);
+        setTrimStart(0);
+        setTrimEnd(audio.duration);
+      };
+
+      audio.ontimeupdate = () => {
+        setCurrentTime(audio.currentTime);
+      };
+
+      audio.onended = () => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+      };
+
+      const res = await fetch(url);
+      const arrayBuffer = await res.arrayBuffer();
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
       audioBufferRef.current = decodedBuffer;
-      setDuration(decodedBuffer.duration);
-      pauseOffsetRef.current = 0;
 
-      playAudioBuffer(decodedBuffer, 0, playbackRate, semitoni);
+      await audio.play();
+      setIsPlaying(true);
       showToast("Riproduzione avviata");
     } catch (err) {
-      showToast("Errore caricamento file audio (CORS o file non valido)", "error");
+      showToast("Errore caricamento file audio", "error");
       setActiveAudioId(null);
     }
   };
 
-  const changeSemitones = (newSemi: number) => {
-    setSemitoni(newSemi);
-    if (sourceNodeRef.current && audioCtxRef.current) {
-      sourceNodeRef.current.detune.value = newSemi * 100;
-    }
-  };
-
-  const changeRate = (newRate: number) => {
-    setPlaybackRate(newRate);
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.playbackRate.value = newRate;
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(e.target.value);
+    setCurrentTime(newTime);
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime;
     }
   };
 
   const handleSkip = (seconds: number) => {
-    if (!audioBufferRef.current || !audioCtxRef.current) return;
-    const currentAudioTime = (audioCtxRef.current.currentTime - startTimeRef.current);
-    const newTargetTime = Math.max(0, Math.min(duration, currentAudioTime + seconds));
-    pauseOffsetRef.current = newTargetTime;
-    if (isPlaying) {
-      playAudioBuffer(audioBufferRef.current, newTargetTime, playbackRate, semitoni);
+    if (!audioRef.current) return;
+    const newTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + seconds));
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const changeRate = (newRate: number) => {
+    setPlaybackRate(newRate);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = newRate;
     }
   };
 
@@ -594,7 +675,7 @@ export default function MaestraDashboardPage() {
       <header className="border-b border-stone-200/80 bg-[#FCFBF9]/80 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-6 lg:px-16 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3 sm:gap-4">
           <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-white flex items-center justify-center shadow-sm border border-stone-200/80 shrink-0">
-            <Image src="/logo-2.png" alt="Logo" fill className="object-contain p-1" />
+            <Image src="/logo-2.png" alt="Logo" fill sizes="64px" className="object-contain p-1" />
           </div>
           <div>
             <h1 className="text-[10px] sm:text-xs font-semibold tracking-[0.15em] sm:tracking-[0.2em] uppercase text-stone-900">
@@ -617,6 +698,15 @@ export default function MaestraDashboardPage() {
             <span>Orario Lezioni</span>
           </button>
           <button
+            onClick={() => { setActiveTab("registro"); setSelectedAllievo(null); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+              activeTab === "registro" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
+            }`}
+          >
+            <Table className="w-3.5 h-3.5" />
+            <span>Registro per Giornata</span>
+          </button>
+          <button
             onClick={() => setActiveTab("allievi")}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
               activeTab === "allievi" || selectedAllievo ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
@@ -631,9 +721,9 @@ export default function MaestraDashboardPage() {
           <div className="flex items-center gap-2.5 bg-white border border-stone-200/80 rounded-full py-1 pl-2.5 pr-3.5 sm:py-1.5 sm:pl-3 sm:pr-4 shadow-[0_2px_4px_rgba(0,0,0,0.02)]">
             <label className="relative w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden bg-stone-300 text-stone-800 font-semibold text-xs flex items-center justify-center cursor-pointer group shadow-inner shrink-0">
               {avatarUrl ? (
-                <Image src={avatarUrl} alt="Profilo" fill className="object-cover" />
+                <Image src={avatarUrl} alt="Profilo" fill sizes="36px" className="object-cover" />
               ) : (
-                <Image src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTZ8MHwxfHNlYXJjaHwxfHxwb3J0cmFpdHxlbnwwfHx8fDE3ODc4MzA0Mjd8MA&ixlib=rb-4.1.0&q=85" alt="Profilo" fill className="object-cover" />
+                <Image src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTZ8MHwxfHNlYXJjaHwxfHxwb3J0cmFpdHxlbnwwfHx8fDE3ODc4MzA0Mjd8MA&ixlib=rb-4.1.0&q=85" alt="Profilo" fill sizes="36px" className="object-cover" />
               )}
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
                 <Camera className="w-4 h-4" />
@@ -670,6 +760,15 @@ export default function MaestraDashboardPage() {
             <span>Orario</span>
           </button>
           <button
+            onClick={() => { setActiveTab("registro"); setSelectedAllievo(null); }}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium transition-all ${
+              activeTab === "registro" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"
+            }`}
+          >
+            <Table className="w-3.5 h-3.5" />
+            <span>Registro</span>
+          </button>
+          <button
             onClick={() => setActiveTab("allievi")}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-medium transition-all ${
               activeTab === "allievi" || selectedAllievo ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"
@@ -679,6 +778,130 @@ export default function MaestraDashboardPage() {
             <span>Allievi</span>
           </button>
         </div>
+
+        {/* REGISTRO ORDINATO PER GIORNATA */}
+        {activeTab === "registro" && !selectedAllievo && (
+          <div className="space-y-8">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+              <div>
+                <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Registro Presenze per Giornata</span>
+                <h2 className="text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
+                  Tabella <span className="italic font-light">ordinata per giorno di lezione</span>
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-stone-600 uppercase">Mese:</label>
+                <select
+                  value={selectedMese} onChange={(e) => setSelectedMese(e.target.value)}
+                  className="px-4 py-2.5 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs font-semibold focus:outline-none shadow-xs"
+                >
+                  <option value="Settembre">SETTEMBRE</option>
+                  <option value="Ottobre">OTTOBRE</option>
+                  <option value="Novembre">NOVEMBRE</option>
+                  <option value="Dicembre">DICEMBRE</option>
+                  <option value="Gennaio">GENNAIO</option>
+                  <option value="Febbraio">FEBBRAIO</option>
+                  <option value="Marzo">MARZO</option>
+                  <option value="Aprile">APRILE</option>
+                  <option value="Maggio">MAGGIO</option>
+                  <option value="Giugno">GIUGNO</option>
+                </select>
+              </div>
+            </div>
+
+            {GIORNI_SETTIMANA.map((giorno) => {
+              const lezioniGiorno = orarioList.filter(l => l.giorno === giorno);
+              if (lezioniGiorno.length === 0) return null;
+
+              return (
+                <div key={giorno} className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="w-3 h-3 rounded-full bg-[#7A2238]"></span>
+                    <h3 className="font-serif text-xl text-stone-900 font-medium">{giorno}</h3>
+                    <span className="text-xs text-stone-400 font-medium">({lezioniGiorno.length} allievi in programma)</span>
+                  </div>
+
+                  <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-sm overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-xs">
+                      <thead>
+                        <tr className="bg-[#7A2238] text-white">
+                          <th className="p-4 rounded-tl-2xl font-serif font-medium uppercase tracking-wider">Orario & Allievo</th>
+                          <th className="p-4 text-center font-bold tracking-widest border-l border-white/20">Settimana 1</th>
+                          <th className="p-4 text-center font-bold tracking-widest border-l border-white/20">Settimana 2</th>
+                          <th className="p-4 text-center font-bold tracking-widest border-l border-white/20">Settimana 3</th>
+                          <th className="p-4 text-center font-bold tracking-widest rounded-tr-2xl border-l border-white/20">Settimana 4</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-200">
+                        {lezioniGiorno.map((lezione) => {
+                          const allievoKey = lezione.nome_allievo;
+
+                          return (
+                            <tr key={lezione.id} className="hover:bg-stone-50 transition-colors">
+                              <td className="p-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-9 h-9 rounded-full overflow-hidden bg-stone-200 text-stone-700 font-semibold text-xs flex items-center justify-center shrink-0">
+                                    <span>{allievoKey.charAt(0)}</span>
+                                  </div>
+                                  <div>
+                                    <p className="font-serif font-medium text-stone-900 flex items-center gap-1.5">
+                                      <Clock className="w-3 h-3 text-[#7A2238]" /> {lezione.ora} - {allievoKey}
+                                    </p>
+                                    <span className="text-[9px] uppercase tracking-wider text-stone-500 font-bold">{lezione.corso || "Corso Standard"}</span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {[1, 2, 3, 4].map((settimanaNum) => {
+                                const record = presenzeMensili.find(p => p.allievo_nome.toLowerCase() === allievoKey.toLowerCase() && p.mese === selectedMese && p.settimana === settimanaNum);
+                                const stato = record ? record.stato : null;
+
+                                return (
+                                  <td key={settimanaNum} className="p-3 border-l border-stone-200 text-center">
+                                    <div className="inline-flex items-center gap-1 bg-stone-100 p-1 rounded-xl border border-stone-200">
+                                      <button
+                                        onClick={() => handleSetPresenzaCell(allievoKey, settimanaNum, 'P')}
+                                        className={`w-7 h-7 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center ${
+                                          stato === 'P' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-stone-700 hover:bg-emerald-50'
+                                        }`}
+                                        title="Presente"
+                                      >
+                                        P
+                                      </button>
+                                      <button
+                                        onClick={() => handleSetPresenzaCell(allievoKey, settimanaNum, 'A')}
+                                        className={`w-7 h-7 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center ${
+                                          stato === 'A' ? 'bg-red-600 text-white shadow-sm' : 'bg-white text-stone-700 hover:bg-red-50'
+                                        }`}
+                                        title="Assente"
+                                      >
+                                        A
+                                      </button>
+                                      <button
+                                        onClick={() => handleSetPresenzaCell(allievoKey, settimanaNum, 'R')}
+                                        className={`w-7 h-7 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center ${
+                                          stato === 'R' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-stone-700 hover:bg-blue-50'
+                                        }`}
+                                        title="Recupero"
+                                      >
+                                        R
+                                      </button>
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {activeTab === "orario" && !selectedAllievo && (
           <div className="space-y-8">
@@ -770,7 +993,7 @@ export default function MaestraDashboardPage() {
                                 <div>
                                   <span className="text-[11px] font-bold opacity-75 flex items-center gap-1">
                                     <Clock className="w-3 h-3" />
-                                    {lezione.ora} {lezione.tipo_modifica === "recupero" && "· (Recupero)"}
+                                    {lezione.ora}
                                   </span>
                                   <span className="text-xs font-semibold block mt-0.5">{lezione.nome_allievo}</span>
                                   {lezione.corso && (
@@ -1129,7 +1352,7 @@ export default function MaestraDashboardPage() {
 
       </main>
 
-      {/* MINI-PLAYER FISSO IN BASSO A DESTRA CON TRASPOSITORE (-5 a +5) E SCHERMO INTERO */}
+      {/* MINI-PLAYER FISSO IN BASSO A DESTRA */}
       {activeAudioId && (() => {
         const activeTrack = basi.find(b => b.id === activeAudioId);
         if (!activeTrack) return null;
@@ -1156,33 +1379,29 @@ export default function MaestraDashboardPage() {
                 </div>
                 <div className="overflow-hidden flex-1">
                   <h5 className="font-serif text-sm font-medium text-stone-900 truncate">{activeTrack.titolo}</h5>
-                  <p className="text-[11px] text-stone-500 truncate">{activeTrack.artista} {semitoni !== 0 ? `· Tonalità: ${semitoni > 0 ? `+${semitoni}` : semitoni}` : ''}</p>
+                  <p className="text-[11px] text-stone-500 truncate">{activeTrack.artista}</p>
                 </div>
               </div>
 
-              {/* TRASPOSITORE RAPIDO (-5 a +5) */}
-              <div className="bg-stone-50 p-2 rounded-xl border border-stone-200 space-y-1.5">
-                <div className="flex items-center justify-between text-[10px] font-bold uppercase text-stone-600">
-                  <span>Tonalità:</span>
-                  <span className="text-[#7A2238]">{semitoni > 0 ? `+${semitoni}` : semitoni} semitoni</span>
-                </div>
-                <div className="grid grid-cols-11 gap-0.5">
-                  {[-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5].map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => changeSemitones(s)}
-                      className={`py-1 rounded text-[9px] font-bold cursor-pointer transition-all text-center ${semitoni === s ? 'bg-[#7A2238] text-white shadow-sm' : 'bg-white border text-stone-700 hover:bg-stone-100'}`}
-                    >
-                      {s > 0 ? `+${s}` : s}
-                    </button>
-                  ))}
+              <div className="space-y-1">
+                <input
+                  type="range"
+                  min={0}
+                  max={duration || 100}
+                  value={currentTime}
+                  onChange={handleSeek}
+                  className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#7A2238]"
+                />
+                <div className="flex justify-between text-[10px] text-stone-400 font-medium">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(duration)}</span>
                 </div>
               </div>
 
               <div className="flex items-center justify-between pt-1">
                 <div className="flex items-center gap-1.5">
-                  <button onClick={() => handleSkip(-10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg cursor-pointer"><RotateCcw className="w-3.5 h-3.5" /></button>
-                  <button onClick={() => handleSkip(10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg cursor-pointer"><RotateCw className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => handleSkip(-10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg cursor-pointer" title="-10 secondi"><RotateCcw className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => handleSkip(10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg cursor-pointer" title="+10 secondi"><RotateCw className="w-3.5 h-3.5" /></button>
                 </div>
                 <button
                   onClick={() => togglePlayTrack(activeTrack.id, activeTrack.file_url)}
@@ -1194,83 +1413,54 @@ export default function MaestraDashboardPage() {
               </div>
             </div>
 
-            {/* EXPANDED / FULLSCREEN PLAYER MODAL */}
             {isExpandedPlayer && (
-              <div className="fixed inset-0 z-50 bg-[#FCFBF9] flex flex-col justify-between p-6 sm:p-12 animate-fadeIn">
+              <div className="fixed inset-0 z-50 bg-[#FCFBF9] flex flex-col justify-between p-6 sm:p-12 animate-fadeIn overflow-y-auto">
                 <div className="flex items-center justify-between max-w-4xl w-full mx-auto">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center"><Music className="w-5 h-5" /></div>
                     <div>
-                      <h4 className="text-xs font-bold uppercase tracking-widest text-[#7A2238]">Transpositore & Lettore a Schermo Intero</h4>
+                      <h4 className="text-xs font-bold uppercase tracking-widest text-[#7A2238]">Player & Editor Audio</h4>
                       <p className="text-[11px] text-stone-500">Allievo: {activeTrack.allievo_nome} {activeTrack.allievo_cognome}</p>
                     </div>
                   </div>
                   <button onClick={() => setIsExpandedPlayer(false)} className="p-3 bg-stone-200/60 hover:bg-stone-200 rounded-full cursor-pointer"><Minimize2 className="w-5 h-5" /></button>
                 </div>
 
-                <div className="max-w-2xl w-full mx-auto text-center space-y-6 my-auto">
-                  <div className="w-32 h-32 mx-auto rounded-3xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shadow-inner">
-                    <Disc className="w-16 h-16 animate-spin" />
+                <div className="max-w-2xl w-full mx-auto text-center space-y-6 my-auto py-8">
+                  <div className="w-24 h-24 sm:w-32 sm:h-32 mx-auto rounded-3xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shadow-inner">
+                    <Disc className="w-12 h-12 sm:w-16 sm:h-16 animate-spin" />
                   </div>
 
                   <div className="space-y-2">
                     <h2 className="text-2xl sm:text-3xl font-serif font-medium">{activeTrack.titolo}</h2>
                     <p className="text-sm text-stone-500">{activeTrack.artista}</p>
-                    {activeTrack.commento && (
-                      <div className="mt-2 max-w-md mx-auto bg-[#7A2238]/10 border border-[#7A2238]/20 rounded-2xl p-3 text-xs text-stone-800 text-left">
-                        <span className="font-bold text-[#7A2238] block mb-1 uppercase tracking-wider text-[10px]">Commento Insegnante:</span>
-                        {activeTrack.commento}
-                      </div>
-                    )}
                   </div>
 
-                  {/* TRASPOSITORE DI TONALITÀ A SEMITONI DA -5 A +5 */}
-                  <div className="bg-white border border-stone-200 p-5 rounded-3xl space-y-3 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold uppercase tracking-widest text-[#7A2238]">Trasponi Tonalità</label>
-                      <span className="text-xs font-bold text-stone-700 bg-stone-100 px-3 py-1 rounded-full">
-                        {semitoni > 0 ? `+${semitoni}` : semitoni} semitoni
-                      </span>
+                  <div className="bg-white border border-stone-200 p-5 rounded-3xl space-y-2 shadow-sm text-left">
+                    <div className="flex items-center justify-between text-xs font-bold text-stone-700">
+                      <span>Progresso Brano</span>
+                      <span className="text-[#7A2238]">{formatTime(currentTime)} / {formatTime(duration)}</span>
                     </div>
-                    <div className="grid grid-cols-11 gap-1.5">
-                      {[-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5].map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => changeSemitones(s)}
-                          className={`py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${semitoni === s ? 'bg-[#7A2238] text-white shadow-md scale-105' : 'bg-stone-50 border border-stone-200 text-stone-700 hover:bg-stone-100'}`}
-                        >
-                          {s > 0 ? `+${s}` : s}
-                        </button>
-                      ))}
-                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={duration || 100}
+                      value={currentTime}
+                      onChange={handleSeek}
+                      className="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#7A2238]"
+                    />
                   </div>
 
-                  <div className="flex items-center justify-center gap-6">
+                  <div className="flex items-center justify-center gap-6 pt-2">
                     <button onClick={() => handleSkip(-10)} className="p-3 bg-stone-100 hover:bg-stone-200 rounded-full cursor-pointer"><RotateCcw className="w-5 h-5" /></button>
                     <button onClick={() => togglePlayTrack(activeTrack.id, activeTrack.file_url)} className="w-16 h-16 bg-[#7A2238] text-white rounded-full flex items-center justify-center shadow-xl cursor-pointer hover:scale-105">
                       {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-1" />}
                     </button>
                     <button onClick={() => handleSkip(10)} className="p-3 bg-stone-100 hover:bg-stone-200 rounded-full cursor-pointer"><RotateCw className="w-5 h-5" /></button>
                   </div>
-
-                  <div className="flex items-center justify-center gap-2 pt-2">
-                    <Sliders className="w-4 h-4 text-stone-500 mr-1" />
-                    <span className="text-xs uppercase font-bold text-stone-500">Velocità:</span>
-                    {[0.5, 0.75, 1, 1.25, 1.5].map((rate) => (
-                      <button
-                        key={rate}
-                        onClick={() => changeRate(rate)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
-                          playbackRate === rate ? 'bg-[#7A2238] text-white' : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-100'
-                        }`}
-                      >
-                        {rate}x
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
-                <div className="text-center text-xs text-stone-400">Nuova Accademia Toscanini &middot; Canto Moderno</div>
+                <div className="text-center text-xs text-stone-400 py-4">Nuova Accademia Toscanini &middot; Canto Moderno</div>
               </div>
             )}
           </>
@@ -1282,7 +1472,7 @@ export default function MaestraDashboardPage() {
           <div className="bg-white rounded-3xl max-w-md w-full p-8 space-y-6 shadow-2xl">
             <div className="flex items-center justify-between pb-4 border-b border-stone-100">
               <h3 className="font-serif text-xl text-stone-900 font-medium">Modifica Lezione</h3>
-              <button onClick={() => setEditingLezione(null)} className="text-stone-400 hover:text-stone-700 cursor-pointer">
+              <button onClick={() => setEditingLezione(null)} className="text-stone-400 hover:text-stone-705 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1303,19 +1493,6 @@ export default function MaestraDashboardPage() {
               <div className="space-y-1">
                 <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Allievo / Corso</label>
                 <input type="text" value={editNome} onChange={(e) => setEditNome(e.target.value)} required className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Corso (Opzionale)</label>
-                <input type="text" value={editCorso} onChange={(e) => setEditCorso(e.target.value)} placeholder="es. Avanzato..." className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Tipo Modifica</label>
-                <select value={editTipoModifica} onChange={(e) => setEditTipoModifica(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none">
-                  <option value="normale">Normale</option>
-                  <option value="recupero">Recupero (Colore Blu)</option>
-                </select>
               </div>
 
               <div className="pt-4 flex items-center justify-end gap-3">

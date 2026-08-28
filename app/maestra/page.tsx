@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Sliders, Maximize2, Minimize2 } from "lucide-react";
+import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Sliders, Maximize2, Minimize2, Disc } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -79,9 +79,15 @@ export default function MaestraDashboardPage() {
   const [nuovoCorso, setNuovoCorso] = useState("");
   const [nuovoTipoModifica, setNuovoTipoModifica] = useState("normale");
 
+  // YouTube Downloader States
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [isConvertingYoutube, setIsConvertingYoutube] = useState(false);
+  const [ytTitolo, setYtTitolo] = useState("");
+  const [ytArtista, setYtArtista] = useState("");
+
   const [titoloBase, setTitoloBase] = useState("");
   const [artistaBase, setArtistaBase] = useState("");
-  const [tonalitaBase, setTonalitaBase] = useState("");
+  const [tonalitaBase, setTonalitaBase] = useState("Standard (0)");
   const [commentoBase, setCommentoBase] = useState("");
   const [fileBase, setFileBase] = useState<File | null>(null);
   const [isUploadingBase, setIsUploadingBase] = useState(false);
@@ -90,14 +96,21 @@ export default function MaestraDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Player Audio Avanzato & Fullscreen
+  // Web Audio API & Transpositore State
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
+  const [semitoni, setSemitoni] = useState<number>(0);
   const [isExpandedPlayer, setIsExpandedPlayer] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Web Audio API refs
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioBufferRef = useRef<AudioBuffer | null>(null);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  const startTimeRef = useRef<number>(0);
+  const pauseOffsetRef = useRef<number>(0);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -124,20 +137,12 @@ export default function MaestraDashboardPage() {
   useEffect(() => {
     const channelBasi = supabase
       .channel('realtime-maestra-basi')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'basi' },
-        () => { fetchBasiData(); }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'basi' }, () => { fetchBasiData(); })
       .subscribe();
 
     const channelOrario = supabase
       .channel('realtime-maestra-orario')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'orario' },
-        () => { fetchOrarioData(); }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orario' }, () => { fetchOrarioData(); })
       .subscribe();
 
     return () => {
@@ -151,18 +156,14 @@ export default function MaestraDashboardPage() {
     const safeBasi = basiData || [];
     setBasi(safeBasi);
     const initialComments: { [key: string]: string } = {};
-    safeBasi.forEach((b) => {
-      initialComments[b.id] = b.commento || "";
-    });
+    safeBasi.forEach((b) => { initialComments[b.id] = b.commento || ""; });
     setCommentiModificati(initialComments);
   };
 
   const fetchOrarioData = async () => {
     const { data: orarioData } = await supabase.from("orario").select("*").order("ora", { ascending: true });
     if (orarioData && orarioData.length > 0) {
-      const uniqueOrario = Array.from(
-        new Map(orarioData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values()
-      );
+      const uniqueOrario = Array.from(new Map(orarioData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values());
       setOrarioList(uniqueOrario as LezioneOrario[]);
     } else {
       setOrarioList([]);
@@ -174,40 +175,17 @@ export default function MaestraDashboardPage() {
       const { data: allieviData } = await supabase.from("allievi").select("*").order("cognome");
       const safeAllievi = allieviData || [];
       setAllievi(safeAllievi);
-      const raffaela = safeAllievi.find(
-        (a) => a.nome.toLowerCase() === "raffaela" && a.cognome.toLowerCase() === "carfora"
-      );
-      if (raffaela?.avatar_url) {
-        setAvatarUrl(raffaela.avatar_url);
-      }
+      const raffaela = safeAllievi.find((a) => a.nome.toLowerCase() === "raffaela" && a.cognome.toLowerCase() === "carfora");
+      if (raffaela?.avatar_url) setAvatarUrl(raffaela.avatar_url);
 
       await fetchBasiData();
 
       const { data: orarioData } = await supabase.from("orario").select("*").order("ora", { ascending: true });
       if (orarioData && orarioData.length > 0) {
-        const uniqueOrario = Array.from(
-          new Map(orarioData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values()
-        );
-        setOrarioList(uniqueOrario as LezioneOrario[]);
+        setOrarioList(Array.from(new Map(orarioData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values()) as LezioneOrario[]);
       } else {
-        const { data: insertedData, error: insertError } = await supabase
-          .from("orario")
-          .insert(ORARIO_INIZIALE)
-          .select();
-        
-        if (!insertError && insertedData) {
-          const uniqueOrario = Array.from(
-            new Map(insertedData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values()
-          );
-          setOrarioList(uniqueOrario as LezioneOrario[]);
-        } else {
-          setOrarioList(
-            ORARIO_INIZIALE.map((item, index) => ({
-              id: `init-${index}`,
-              ...item,
-            }))
-          );
-        }
+        const { data: insertedData } = await supabase.from("orario").insert(ORARIO_INIZIALE).select();
+        setOrarioList(insertedData ? Array.from(new Map(insertedData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values()) as LezioneOrario[] : ORARIO_INIZIALE.map((item, i) => ({ id: `init-${i}`, ...item })));
       }
     } catch (err) {
       console.error(err);
@@ -219,58 +197,24 @@ export default function MaestraDashboardPage() {
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const avatarFile = e.target.files?.[0];
     if (!avatarFile) return;
-
-    if (avatarFile.size > 10 * 1024 * 1024) {
-      showToast("L'immagine è troppo grande (max 10MB).", "error");
-      return;
-    }
-
     setIsUploadingAvatar(true);
     try {
-      const fileExt = avatarFile.name.split(".").pop();
-      const fileName = `avatar-raffaela-${Date.now()}.${fileExt}`;
-      const filePath = `Raffaela_Carfora/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(filePath, avatarFile, { upsert: true });
-
-      if (uploadError) {
-        showToast("Errore caricamento foto: " + uploadError.message, "error");
-        setIsUploadingAvatar(false);
-        return;
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(filePath);
-
+      const filePath = `Raffaela_Carfora/avatar-${Date.now()}.${avatarFile.name.split(".").pop()}`;
+      await supabase.storage.from("avatars").upload(filePath, avatarFile, { upsert: true });
+      const { data: publicUrlData } = supabase.storage.from("avatars").getPublicUrl(filePath);
       const newAvatarUrl = publicUrlData.publicUrl;
 
-      let raffaelaRecord = allievi.find(
-        (a) => a.nome.toLowerCase() === "raffaela" && a.cognome.toLowerCase() === "carfora"
-      );
-
+      let raffaelaRecord = allievi.find((a) => a.nome.toLowerCase() === "raffaela" && a.cognome.toLowerCase() === "carfora");
       if (raffaelaRecord) {
-        await supabase
-          .from("allievi")
-          .update({ avatar_url: newAvatarUrl })
-          .eq("id", raffaelaRecord.id);
+        await supabase.from("allievi").update({ avatar_url: newAvatarUrl }).eq("id", raffaelaRecord.id);
       } else {
-        const { data: newRec } = await supabase
-          .from("allievi")
-          .insert([{ nome: "Raffaela", cognome: "Carfora", avatar_url: newAvatarUrl }])
-          .select();
-
-        if (newRec) {
-          setAllievi([...allievi, newRec[0]]);
-        }
+        const { data: newRec } = await supabase.from("allievi").insert([{ nome: "Raffaela", cognome: "Carfora", avatar_url: newAvatarUrl }]).select();
+        if (newRec) setAllievi([...allievi, newRec[0]]);
       }
-
       setAvatarUrl(newAvatarUrl);
       showToast("Foto profilo salvata!");
     } catch (err: any) {
-      showToast("Errore: " + (err.message || err), "error");
+      showToast("Errore: " + err.message, "error");
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -286,11 +230,7 @@ export default function MaestraDashboardPage() {
       corso: editAllievoCorso.trim() || null,
     };
 
-    const { error } = await supabase
-      .from("allievi")
-      .update(updatedData)
-      .eq("id", selectedAllievo.id);
-
+    const { error } = await supabase.from("allievi").update(updatedData).eq("id", selectedAllievo.id);
     if (error) {
       showToast("Errore aggiornamento allievo: " + error.message, "error");
       return;
@@ -303,90 +243,95 @@ export default function MaestraDashboardPage() {
     showToast("Informazioni aggiornate!");
   };
 
+  const handleYoutubeImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!youtubeUrl.trim() || !selectedAllievo) return;
+
+    setIsConvertingYoutube(true);
+    try {
+      const res = await fetch('/api/youtube', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: youtubeUrl })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Errore conversione YouTube');
+      }
+
+      const nuovaBaseRecord = {
+        allievo_nome: selectedAllievo.nome,
+        allievo_cognome: selectedAllievo.cognome,
+        titolo: ytTitolo.trim() || data.titolo,
+        artista: ytArtista.trim() || data.artista,
+        tonalita: tonalitaBase,
+        commento: commentoBase.trim() || null,
+        file_url: data.file_url || youtubeUrl,
+      };
+
+      const { data: inserted, error } = await supabase.from("basi").insert([nuovaBaseRecord]).select();
+      if (error) throw error;
+
+      if (inserted) {
+        setBasi([inserted[0], ...basi]);
+        setYoutubeUrl("");
+        setYtTitolo("");
+        setYtArtista("");
+        setCommentoBase("");
+        showToast("Brano da YouTube importato con successo!");
+      }
+    } catch (err: any) {
+      showToast("Impossibile importare da YouTube: " + err.message, "error");
+    } finally {
+      setIsConvertingYoutube(false);
+    }
+  };
+
   const handleUploadBaseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fileBase || !selectedAllievo || !titoloBase.trim()) return;
 
-    if (fileBase.size > 50 * 1024 * 1024) {
-      showToast("Il file supera i 50MB consentiti.", "error");
-      return;
-    }
-
     setIsUploadingBase(true);
     try {
-      const fileExt = fileBase.name.split(".").pop();
-      const fileName = `${selectedAllievo.cognome}_${selectedAllievo.nome}_${Date.now()}.${fileExt}`;
-      const filePath = `basi_audio/${fileName}`;
+      const filePath = `basi_audio/${selectedAllievo.cognome}_${selectedAllievo.nome}_${Date.now()}.${fileBase.name.split(".").pop()}`;
+      const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, fileBase, { upsert: true });
+      if (uploadError) throw uploadError;
 
-      const { error: uploadError } = await supabase.storage
-        .from("basi")
-        .upload(filePath, fileBase, { upsert: true });
-
-      if (uploadError) {
-        showToast("Errore caricamento file: " + uploadError.message, "error");
-        setIsUploadingBase(false);
-        return;
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from("basi")
-        .getPublicUrl(filePath);
-
-      const fileUrl = publicUrlData.publicUrl;
+      const { data: publicUrlData } = supabase.storage.from("basi").getPublicUrl(filePath);
 
       const nuovaBaseRecord = {
         allievo_nome: selectedAllievo.nome,
         allievo_cognome: selectedAllievo.cognome,
         titolo: titoloBase.trim(),
         artista: artistaBase.trim() || "Autore non specificato",
-        tonalita: tonalitaBase.trim() || "Standard",
+        tonalita: tonalitaBase,
         commento: commentoBase.trim() || null,
-        file_url: fileUrl,
+        file_url: publicUrlData.publicUrl,
       };
 
-      const { data, error: dbError } = await supabase
-        .from("basi")
-        .insert([nuovaBaseRecord])
-        .select();
-
-      if (dbError) {
-        showToast("Errore salvataggio nel database: " + dbError.message, "error");
-        setIsUploadingBase(false);
-        return;
-      }
+      const { data, error } = await supabase.from("basi").insert([nuovaBaseRecord]).select();
+      if (error) throw error;
 
       if (data) {
         setBasi([data[0], ...basi]);
-        setCommentiModificati({ ...commentiModificati, [data[0].id]: data[0].commento || "" });
         setTitoloBase("");
         setArtistaBase("");
-        setTonalitaBase("");
         setCommentoBase("");
         setFileBase(null);
-        showToast("Base caricata e commento salvato!");
+        showToast("Base caricata con successo!");
       }
     } catch (err: any) {
-      showToast("Errore: " + (err.message || err), "error");
+      showToast("Errore: " + err.message, "error");
     } finally {
       setIsUploadingBase(false);
     }
   };
 
   const handleDeleteBase = async (id: string) => {
-    if (!confirm("Vuoi davvero eliminare questa base musicale?")) return;
-    if (activeAudioId === id && audioRef.current) {
-      audioRef.current.pause();
-      setActiveAudioId(null);
-      setIsPlaying(false);
-      setIsExpandedPlayer(false);
-    }
-    
-    const { error } = await supabase.from("basi").delete().eq("id", id);
-    if (error) {
-      showToast("Errore eliminazione: " + error.message, "error");
-      return;
-    }
-
+    if (!confirm("Vuoi davvero eliminare questa base?")) return;
+    if (activeAudioId === id) stopAudio();
+    await supabase.from("basi").delete().eq("id", id);
     setBasi(basi.filter((b) => b.id !== id));
     showToast("Base eliminata.");
   };
@@ -409,49 +354,112 @@ export default function MaestraDashboardPage() {
     }
   };
 
-  const togglePlayTrack = (id: string, url: string) => {
-    if (activeAudioId === id) {
-      if (audioRef.current) {
-        if (isPlaying) {
-          audioRef.current.pause();
-          setIsPlaying(false);
-        } else {
-          audioRef.current.play();
-          setIsPlaying(true);
-        }
-      }
-    } else {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      const audio = new Audio(url);
-      audio.playbackRate = playbackRate;
-      audioRef.current = audio;
-      setActiveAudioId(id);
-      setIsPlaying(true);
+  const stopAudio = () => {
+    if (sourceNodeRef.current) {
+      try { sourceNodeRef.current.stop(); } catch (e) {}
+      sourceNodeRef.current = null;
+    }
+    setIsPlaying(false);
+    setActiveAudioId(null);
+    setCurrentTime(0);
+    pauseOffsetRef.current = 0;
+  };
 
-      audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
-      audio.onloadedmetadata = () => setDuration(audio.duration);
-      audio.onended = () => {
+  const playAudioBuffer = (buffer: AudioBuffer, offset = 0, rate = playbackRate, semi = semitoni) => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioCtxRef.current;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    if (sourceNodeRef.current) {
+      try { sourceNodeRef.current.stop(); } catch (e) {}
+    }
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = rate;
+    source.detune.value = semi * 100;
+
+    source.connect(ctx.destination);
+    source.start(0, offset);
+
+    startTimeRef.current = ctx.currentTime - offset;
+    sourceNodeRef.current = source;
+    setIsPlaying(true);
+
+    source.onended = () => {
+      if (sourceNodeRef.current === source) {
         setIsPlaying(false);
         setCurrentTime(0);
-      };
+        pauseOffsetRef.current = 0;
+      }
+    };
+  };
 
-      audio.play().catch((e) => console.error(e));
+  const togglePlayTrack = async (id: string, url: string) => {
+    if (activeAudioId === id) {
+      if (isPlaying) {
+        if (audioCtxRef.current) {
+          pauseOffsetRef.current = audioCtxRef.current.currentTime - startTimeRef.current;
+        }
+        if (sourceNodeRef.current) {
+          try { sourceNodeRef.current.stop(); } catch (e) {}
+        }
+        setIsPlaying(false);
+      } else {
+        if (audioBufferRef.current) {
+          playAudioBuffer(audioBufferRef.current, pauseOffsetRef.current, playbackRate, semitoni);
+        }
+      }
+      return;
+    }
+
+    stopAudio();
+    setActiveAudioId(id);
+    showToast("Caricamento audio...");
+
+    try {
+      const response = await fetch(url);
+      const arrayBuffer = await response.arrayBuffer();
+
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const decodedBuffer = await audioCtxRef.current.decodeAudioData(arrayBuffer);
+      audioBufferRef.current = decodedBuffer;
+      setDuration(decodedBuffer.duration);
+      pauseOffsetRef.current = 0;
+
+      playAudioBuffer(decodedBuffer, 0, playbackRate, semitoni);
+      showToast("Riproduzione avviata");
+    } catch (err) {
+      showToast("Errore caricamento file audio", "error");
+      setActiveAudioId(null);
     }
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = Number(e.target.value);
-    setCurrentTime(time);
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
+  const changeSemitones = (newSemi: number) => {
+    setSemitoni(newSemi);
+    if (sourceNodeRef.current && audioCtxRef.current) {
+      sourceNodeRef.current.detune.value = newSemi * 100;
+    }
+  };
+
+  const changeRate = (newRate: number) => {
+    setPlaybackRate(newRate);
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.playbackRate.value = newRate;
     }
   };
 
   const handleSkip = (seconds: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + seconds));
+    if (!audioBufferRef.current || !audioCtxRef.current) return;
+    const currentAudioTime = (audioCtxRef.current.currentTime - startTimeRef.current);
+    const newTargetTime = Math.max(0, Math.min(duration, currentAudioTime + seconds));
+    pauseOffsetRef.current = newTargetTime;
+    if (isPlaying) {
+      playAudioBuffer(audioBufferRef.current, newTargetTime, playbackRate, semitoni);
     }
   };
 
@@ -463,16 +471,11 @@ export default function MaestraDashboardPage() {
 
   const handleSaveComment = async (id: string) => {
     const nuovoCommento = commentiModificati[id] || "";
-    const { error } = await supabase
-      .from("basi")
-      .update({ commento: nuovoCommento.trim() || null })
-      .eq("id", id);
-
+    const { error } = await supabase.from("basi").update({ commento: nuovoCommento.trim() || null }).eq("id", id);
     if (error) {
       showToast("Errore salvataggio commento: " + error.message, "error");
       return;
     }
-
     setBasi(basi.map((b) => (b.id === id ? { ...b, commento: nuovoCommento } : b)));
     showToast("Commento aggiornato!");
   };
@@ -532,9 +535,7 @@ export default function MaestraDashboardPage() {
       return;
     }
 
-    setOrarioList(
-      orarioList.map((item) => (item.id === editingLezione.id ? { ...item, ...updated } : item))
-    );
+    setOrarioList(orarioList.map((item) => (item.id === editingLezione.id ? { ...item, ...updated } : item)));
     setEditingLezione(null);
     showToast("Lezione aggiornata!");
   };
@@ -557,43 +558,29 @@ export default function MaestraDashboardPage() {
         showToast("Errore aggiornamento corso: " + error.message, "error");
         return;
       }
-      setAllievi(
-        allievi.map((a) => (a.id === allievoId ? { ...a, corso: nuovoCorso } : a))
-      );
-      if (selectedAllievo) {
-        setSelectedAllievo({ ...selectedAllievo, corso: nuovoCorso });
-      }
+      setAllievi(allievi.map((a) => (a.id === allievoId ? { ...a, corso: nuovoCorso } : a)));
+      if (selectedAllievo) setSelectedAllievo({ ...selectedAllievo, corso: nuovoCorso });
       showToast("Livello corso aggiornato!");
     } catch (err) {
       console.error(err);
     }
   };
 
-  const handleLogout = () => {
-    router.push("/");
-  };
+  const handleLogout = () => { router.push("/"); };
 
   const getCardStyle = (tipoModifica?: string | null, corso?: string | null) => {
-    if (tipoModifica === "recupero") {
-      return "bg-blue-50 text-blue-900 border-blue-200"; 
-    }
+    if (tipoModifica === "recupero") return "bg-blue-50 text-blue-900 border-blue-200";
     switch (corso) {
-      case "Avanzato":
-        return "bg-amber-100 text-amber-800 border-amber-200";
-      case "Professional":
-        return "bg-purple-100 text-purple-800 border-purple-200";
-      case "Base":
-        return "bg-teal-100 text-teal-800 border-teal-200";
-      default:
-        return "bg-white text-stone-900 border-stone-200";
+      case "Avanzato": return "bg-amber-100 text-amber-800 border-amber-200";
+      case "Professional": return "bg-purple-100 text-purple-800 border-purple-200";
+      case "Base": return "bg-teal-100 text-teal-800 border-teal-200";
+      default: return "bg-white text-stone-900 border-stone-200";
     }
   };
 
   const filteredAllievi = allievi.filter(
-    (a) =>
-      (a.nome.toLowerCase() !== "raffaela" || a.cognome.toLowerCase() !== "carfora") &&
-      (a.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
-       a.cognome.toLowerCase().includes(searchQuery.toLowerCase()))
+    (a) => (a.nome.toLowerCase() !== "raffaela" || a.cognome.toLowerCase() !== "carfora") &&
+      (a.nome.toLowerCase().includes(searchQuery.toLowerCase()) || a.cognome.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (
@@ -966,6 +953,44 @@ export default function MaestraDashboardPage() {
               </div>
             </div>
 
+            {/* BOX YOUTUBE DOWNLOADER & MP3 CONVERTER */}
+            <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-sm space-y-4">
+              <h4 className="text-xs font-bold tracking-widest text-[#7A2238] uppercase flex items-center gap-2">
+                <svg className="w-5 h-5 text-red-600" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                </svg>
+                YouTube Downloader & Convertitore MP3 per {selectedAllievo.nome}
+              </h4>
+              <form onSubmit={handleYoutubeImport} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-3 space-y-1">
+                    <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Link YouTube</label>
+                    <input type="text" value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." required className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Titolo Brano</label>
+                    <input type="text" value={ytTitolo} onChange={(e) => setYtTitolo(e.target.value)} placeholder="es. E poi" className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Artista</label>
+                    <input type="text" value={ytArtista} onChange={(e) => setYtArtista(e.target.value)} placeholder="es. Giorgia" className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Tonalità Consigliata</label>
+                    <input type="text" value={tonalitaBase} onChange={(e) => setTonalitaBase(e.target.value)} placeholder="es. A major, -1" className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Commento / Nota per l'allievo</label>
+                  <textarea value={commentoBase} onChange={(e) => setCommentoBase(e.target.value)} placeholder="Note di studio..." rows={2} className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none resize-none" />
+                </div>
+                <button type="submit" disabled={isConvertingYoutube} className="w-full py-3 px-6 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50">
+                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                  <span>{isConvertingYoutube ? "Estrazione ed elaborazione audio in corso..." : "Estrai MP3 da YouTube e Assegna"}</span>
+                </button>
+              </form>
+            </div>
+
             <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-sm space-y-4">
               <h4 className="text-xs font-bold tracking-widest text-[#7A2238] uppercase flex items-center gap-2">
                 <Upload className="w-4 h-4" /> Carica Nuova Base Musicale & Commento
@@ -1098,38 +1123,22 @@ export default function MaestraDashboardPage() {
 
       </main>
 
-      {/* MINI-PLAYER FISSO IN BASSO A DESTRA CON TASTO SCHERMO INTERO */}
+      {/* MINI-PLAYER FISSO IN BASSO A DESTRA CON TRASPOSITORE E SCHERMO INTERO */}
       {activeAudioId && (() => {
         const activeTrack = basi.find(b => b.id === activeAudioId);
         if (!activeTrack) return null;
         return (
           <>
-            {/* MINI PLAYER */}
             <div className="fixed bottom-6 right-6 z-50 bg-white border border-stone-200 shadow-2xl rounded-2xl p-4 w-80 sm:w-96 space-y-3 animate-fadeIn">
               <div className="flex items-center justify-between">
                 <span className="text-[9px] font-bold tracking-widest text-[#7A2238] uppercase">
                   Allievo: {activeTrack.allievo_nome} {activeTrack.allievo_cognome}
                 </span>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setIsExpandedPlayer(true)}
-                    className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer"
-                    title="Schermo intero / Espandi"
-                  >
+                  <button onClick={() => setIsExpandedPlayer(true)} className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer" title="Schermo intero">
                     <Maximize2 className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={() => {
-                      if (audioRef.current) {
-                        audioRef.current.pause();
-                        setActiveAudioId(null);
-                        setIsPlaying(false);
-                        setIsExpandedPlayer(false);
-                      }
-                    }}
-                    className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer"
-                    title="Chiudi lettore"
-                  >
+                  <button onClick={() => { stopAudio(); setIsExpandedPlayer(false); }} className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer" title="Chiudi">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -1137,53 +1146,42 @@ export default function MaestraDashboardPage() {
 
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
-                  <FileAudio className="w-5 h-5" />
+                  <Disc className="w-5 h-5 animate-spin" />
                 </div>
                 <div className="overflow-hidden flex-1">
-                  <h5 className="font-serif text-sm font-medium text-stone-900 truncate">
-                    {activeTrack.titolo}
-                  </h5>
-                  <p className="text-[11px] text-stone-500 truncate">
-                    {activeTrack.artista} {activeTrack.tonalita ? `· ${activeTrack.tonalita}` : ''}
-                  </p>
+                  <h5 className="font-serif text-sm font-medium text-stone-900 truncate">{activeTrack.titolo}</h5>
+                  <p className="text-[11px] text-stone-500 truncate">{activeTrack.artista} {semitoni !== 0 ? `· Tonalità: ${semitoni > 0 ? `+${semitoni}` : semitoni}` : ''}</p>
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <input
-                  type="range" min={0} max={duration || 100} value={currentTime} onChange={handleSeek}
-                  className="w-full accent-[#7A2238] cursor-pointer"
-                />
-                <div className="flex items-center justify-between text-[10px] text-stone-400 font-mono">
-                  <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(duration || 0)}</span>
+              {/* TRASPOSITORE RAPIDO */}
+              <div className="bg-stone-50 p-2 rounded-xl border border-stone-200 flex items-center justify-between text-xs">
+                <span className="font-bold text-[10px] uppercase text-stone-600">Tonalità:</span>
+                <div className="flex items-center gap-1">
+                  {[-2, -1, 0, 1, 2].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => changeSemitones(s)}
+                      className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${semitoni === s ? 'bg-[#7A2238] text-white' : 'bg-white border text-stone-700 hover:bg-stone-100'}`}
+                    >
+                      {s > 0 ? `+${s}` : s}
+                    </button>
+                  ))}
                 </div>
               </div>
 
               <div className="flex items-center justify-between pt-1">
                 <div className="flex items-center gap-1.5">
-                  <button onClick={() => handleSkip(-10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg text-stone-700 cursor-pointer" title="Indietro 10s">
-                    <RotateCcw className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => handleSkip(10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg text-stone-700 cursor-pointer" title="Avanti 10s">
-                    <RotateCw className="w-3.5 h-3.5" />
-                  </button>
+                  <button onClick={() => handleSkip(-10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg cursor-pointer"><RotateCcw className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => handleSkip(10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg cursor-pointer"><RotateCw className="w-3.5 h-3.5" /></button>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      if (audioRef.current) {
-                        if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
-                        else { audioRef.current.play(); setIsPlaying(true); }
-                      }
-                    }}
-                    className="px-4 py-1.5 bg-[#7A2238] hover:bg-[#651c2e] text-white text-xs font-medium rounded-xl flex items-center gap-1 cursor-pointer shadow-xs"
-                  >
-                    {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                    <span>{isPlaying ? "Pausa" : "Play"}</span>
-                  </button>
-                </div>
+                <button
+                  onClick={() => togglePlayTrack(activeTrack.id, activeTrack.file_url)}
+                  className="px-4 py-1.5 bg-[#7A2238] text-white text-xs font-medium rounded-xl flex items-center gap-1 cursor-pointer"
+                >
+                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                  <span>{isPlaying ? "Pausa" : "Play"}</span>
+                </button>
               </div>
             </div>
 
@@ -1192,32 +1190,23 @@ export default function MaestraDashboardPage() {
               <div className="fixed inset-0 z-50 bg-[#FCFBF9] flex flex-col justify-between p-6 sm:p-12 animate-fadeIn">
                 <div className="flex items-center justify-between max-w-4xl w-full mx-auto">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center">
-                      <Music className="w-5 h-5" />
-                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center"><Music className="w-5 h-5" /></div>
                     <div>
-                      <h4 className="text-xs font-bold uppercase tracking-widest text-[#7A2238]">Lettore a Schermo Intero</h4>
+                      <h4 className="text-xs font-bold uppercase tracking-widest text-[#7A2238]">Transpositore & Lettore a Schermo Intero</h4>
                       <p className="text-[11px] text-stone-500">Allievo: {activeTrack.allievo_nome} {activeTrack.allievo_cognome}</p>
                     </div>
                   </div>
-
-                  <button
-                    onClick={() => setIsExpandedPlayer(false)}
-                    className="p-3 bg-stone-200/60 hover:bg-stone-200 rounded-full text-stone-800 cursor-pointer transition-colors"
-                    title="Riduci a mini-player"
-                  >
-                    <Minimize2 className="w-5 h-5" />
-                  </button>
+                  <button onClick={() => setIsExpandedPlayer(false)} className="p-3 bg-stone-200/60 hover:bg-stone-200 rounded-full cursor-pointer"><Minimize2 className="w-5 h-5" /></button>
                 </div>
 
                 <div className="max-w-2xl w-full mx-auto text-center space-y-8 my-auto">
-                  <div className="w-32 h-32 sm:w-48 sm:h-48 mx-auto rounded-3xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shadow-inner">
-                    <FileAudio className="w-16 h-16 sm:w-24 sm:h-24 animate-pulse" />
+                  <div className="w-36 h-36 mx-auto rounded-3xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shadow-inner">
+                    <Disc className="w-20 h-20 animate-spin" />
                   </div>
 
                   <div className="space-y-2">
-                    <h2 className="text-3xl sm:text-4xl font-serif text-stone-900 font-medium">{activeTrack.titolo}</h2>
-                    <p className="text-base text-stone-500">{activeTrack.artista} {activeTrack.tonalita ? `· Tonalità: ${activeTrack.tonalita}` : ''}</p>
+                    <h2 className="text-3xl sm:text-4xl font-serif font-medium">{activeTrack.titolo}</h2>
+                    <p className="text-base text-stone-500">{activeTrack.artista}</p>
                     {activeTrack.commento && (
                       <div className="mt-4 max-w-md mx-auto bg-[#7A2238]/10 border border-[#7A2238]/20 rounded-2xl p-4 text-xs text-stone-800 text-left">
                         <span className="font-bold text-[#7A2238] block mb-1 uppercase tracking-wider text-[10px]">Commento Insegnante:</span>
@@ -1226,35 +1215,28 @@ export default function MaestraDashboardPage() {
                     )}
                   </div>
 
-                  <div className="space-y-3">
-                    <input
-                      type="range" min={0} max={duration || 100} value={currentTime} onChange={handleSeek}
-                      className="w-full accent-[#7A2238] cursor-pointer h-2"
-                    />
-                    <div className="flex items-center justify-between text-xs text-stone-400 font-mono">
-                      <span>{formatTime(currentTime)}</span>
-                      <span>{formatTime(duration || 0)}</span>
+                  {/* TRASPOSITORE DI TONALITÀ A SEMITONI */}
+                  <div className="bg-white border border-stone-200 p-6 rounded-3xl space-y-3 shadow-sm">
+                    <label className="text-xs font-bold uppercase tracking-widest text-[#7A2238] block">Trasponi Tonalità (Semitoni)</label>
+                    <div className="flex items-center justify-center gap-2">
+                      {[-3, -2, -1, 0, 1, 2, 3].map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => changeSemitones(s)}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${semitoni === s ? 'bg-[#7A2238] text-white shadow-md' : 'bg-stone-50 border border-stone-200 text-stone-700 hover:bg-stone-100'}`}
+                        >
+                          {s > 0 ? `+${s}` : s} semitoni
+                        </button>
+                      ))}
                     </div>
                   </div>
 
                   <div className="flex items-center justify-center gap-6">
-                    <button onClick={() => handleSkip(-10)} className="p-3 bg-stone-100 hover:bg-stone-200 rounded-full text-stone-800 cursor-pointer" title="Indietro 10s">
-                      <RotateCcw className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (audioRef.current) {
-                          if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
-                          else { audioRef.current.play(); setIsPlaying(true); }
-                        }
-                      }}
-                      className="w-16 h-16 bg-[#7A2238] hover:bg-[#651c2e] text-white rounded-full flex items-center justify-center shadow-xl cursor-pointer transition-transform hover:scale-105"
-                    >
+                    <button onClick={() => handleSkip(-10)} className="p-3 bg-stone-100 hover:bg-stone-200 rounded-full cursor-pointer"><RotateCcw className="w-5 h-5" /></button>
+                    <button onClick={() => togglePlayTrack(activeTrack.id, activeTrack.file_url)} className="w-16 h-16 bg-[#7A2238] text-white rounded-full flex items-center justify-center shadow-xl cursor-pointer hover:scale-105">
                       {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-1" />}
                     </button>
-                    <button onClick={() => handleSkip(10)} className="p-3 bg-stone-100 hover:bg-stone-200 rounded-full text-stone-800 cursor-pointer" title="Avanti 10s">
-                      <RotateCw className="w-5 h-5" />
-                    </button>
+                    <button onClick={() => handleSkip(10)} className="p-3 bg-stone-100 hover:bg-stone-200 rounded-full cursor-pointer"><RotateCw className="w-5 h-5" /></button>
                   </div>
 
                   <div className="flex items-center justify-center gap-2 pt-4">
@@ -1263,10 +1245,7 @@ export default function MaestraDashboardPage() {
                     {[0.5, 0.75, 1, 1.25, 1.5].map((rate) => (
                       <button
                         key={rate}
-                        onClick={() => {
-                          setPlaybackRate(rate);
-                          if (audioRef.current) audioRef.current.playbackRate = rate;
-                        }}
+                        onClick={() => changeRate(rate)}
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
                           playbackRate === rate ? 'bg-[#7A2238] text-white' : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-100'
                         }`}
@@ -1277,9 +1256,7 @@ export default function MaestraDashboardPage() {
                   </div>
                 </div>
 
-                <div className="text-center text-xs text-stone-400">
-                  Nuova Accademia Toscanini &middot; Canto Moderno &middot; M° Raffaela Carfora
-                </div>
+                <div className="text-center text-xs text-stone-400">Nuova Accademia Toscanini &middot; Canto Moderno</div>
               </div>
             )}
           </>

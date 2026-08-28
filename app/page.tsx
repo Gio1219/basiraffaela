@@ -149,7 +149,7 @@ export default function LoginPage() {
             <span className="italic font-light text-stone-200">un solo respiro di distanza.</span>
           </h1>
           <p className="text-stone-300 text-sm lg:text-base font-light leading-relaxed max-w-md">
-            La piattaforma privata della M° Raffaela Carfora per allievi e insegnante.
+            La piattaforma privata del M° Raffaela Carfora per allievi e insegnante.
           </p>
         </div>
 

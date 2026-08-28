@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Music, Upload, LogOut, FileAudio, Camera, MessageSquare, Download, Trash2, Play, Pause, Activity, RotateCcw, RotateCw, Sliders } from "lucide-react";
+import { Music, Upload, LogOut, FileAudio, Camera, MessageSquare, Download, Trash2, Play, Pause, Activity, RotateCcw, RotateCw, Sliders, X } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -40,7 +40,7 @@ export default function DashboardPage() {
   const [isMetronomeActive, setIsMetronomeActive] = useState(false);
   const metronomeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Player Audio Avanzato per singola traccia
+  // Player Audio Avanzato
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -68,7 +68,6 @@ export default function DashboardPage() {
     fetchBasi(storedNome, storedCognome);
   }, [router]);
 
-  // Metronomo Audio
   useEffect(() => {
     if (!isMetronomeActive) {
       if (metronomeTimerRef.current) clearInterval(metronomeTimerRef.current);
@@ -168,7 +167,6 @@ export default function DashboardPage() {
       setAvatarUrl(newAvatarUrl);
       showToast("Foto profilo aggiornata!");
     } catch (err) {
-      console.error(err);
       showToast("Errore imprevisto.", "error");
     } finally {
       setIsUploadingAvatar(false);
@@ -183,7 +181,7 @@ export default function DashboardPage() {
     }
 
     if (file.size > 50 * 1024 * 1024) {
-      showToast("Il file supera i 50MB consentiti da Supabase.", "error");
+      showToast("Il file supera i 50MB consentiti.", "error");
       return;
     }
 
@@ -230,8 +228,7 @@ export default function DashboardPage() {
         fetchBasi(nome, cognome);
       }
     } catch (err) {
-      console.error(err);
-      showToast("Errore imprevisto durante l'invio.", "error");
+      showToast("Errore imprevisto.", "error");
     } finally {
       setIsUploading(false);
     }
@@ -242,6 +239,7 @@ export default function DashboardPage() {
     if (activeAudioId === id && audioRef.current) {
       audioRef.current.pause();
       setActiveAudioId(null);
+      setIsPlaying(false);
     }
     const { error } = await supabase.from("basi").delete().eq("id", id);
     if (error) {
@@ -249,7 +247,7 @@ export default function DashboardPage() {
       return;
     }
     setBasi(basi.filter((b) => b.id !== id));
-    showToast("Base eliminata con successo.");
+    showToast("Base eliminata.");
   };
 
   const handleDownload = async (url: string, filename: string) => {
@@ -270,7 +268,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Gestione Player Audio UI
   const togglePlayTrack = (id: string, url: string) => {
     if (activeAudioId === id) {
       if (audioRef.current) {
@@ -299,10 +296,7 @@ export default function DashboardPage() {
         setCurrentTime(0);
       };
 
-      audio.play().catch((e) => {
-        console.error(e);
-        showToast("Impossibile riprodurre l'audio", "error");
-      });
+      audio.play().catch((e) => showToast("Impossibile riprodurre l'audio", "error"));
     }
   };
 
@@ -345,12 +339,7 @@ export default function DashboardPage() {
       <header className="border-b border-stone-200/80 bg-[#FCFBF9]/80 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-6 lg:px-16 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3 sm:gap-4">
           <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-white flex items-center justify-center shadow-sm border border-stone-200/80 shrink-0">
-            <Image 
-              src="/logo-2.png" 
-              alt="Logo" 
-              fill 
-              className="object-contain p-1" 
-            />
+            <Image src="/logo-2.png" alt="Logo" fill className="object-contain p-1" />
           </div>
           <div>
             <h1 className="text-[10px] sm:text-xs font-semibold tracking-[0.15em] sm:tracking-[0.2em] uppercase text-stone-900">
@@ -373,18 +362,11 @@ export default function DashboardPage() {
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
                 <Camera className="w-4 h-4" />
               </div>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarChange}
-                className="hidden"
-              />
+              <input type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
             </label>
 
             <div className="text-left">
-              <p className="text-xs font-medium text-stone-900 leading-none">
-                {nome} {cognome}
-              </p>
+              <p className="text-xs font-medium text-stone-900 leading-none">{nome} {cognome}</p>
               <p className="text-[10px] text-stone-400 tracking-wider uppercase mt-0.5">
                 {isUploadingAvatar ? "Aggiornamento..." : "Allievo/a"}
               </p>
@@ -401,7 +383,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-12 space-y-10 sm:space-y-12">
+      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-12 space-y-10 sm:space-y-12 pb-32">
         
         {/* METRONOMO */}
         <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-6">
@@ -422,10 +404,7 @@ export default function DashboardPage() {
             </div>
 
             <input 
-              type="range" 
-              min="40" 
-              max="220" 
-              value={bpm} 
+              type="range" min="40" max="220" value={bpm} 
               onChange={(e) => setBpm(Number(e.target.value))}
               className="w-32 sm:w-40 accent-[#7A2238] cursor-pointer"
             />
@@ -444,15 +423,10 @@ export default function DashboardPage() {
         {/* UPLOAD */}
         <div className="space-y-4">
           <div>
-            <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">
-              Le tue basi
-            </span>
+            <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Le tue basi</span>
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
               Carica una nuova <span className="italic font-light">base musicale</span>
             </h2>
-            <p className="text-stone-500 text-xs sm:text-sm font-light mt-1">
-              File MP3, WAV o M4A (Max 50MB).
-            </p>
           </div>
 
           <div className="bg-white rounded-3xl border border-stone-200/80 p-6 sm:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
@@ -469,8 +443,7 @@ export default function DashboardPage() {
                     {file ? "File pronto" : "o clicca per selezionarlo · MP3 · WAV"}
                   </span>
                   <input
-                    type="file"
-                    accept=".mp3,.wav,.m4a,audio/*"
+                    type="file" accept=".mp3,.wav,.m4a,audio/*"
                     onChange={(e) => setFile(e.target.files?.[0] || null)}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                     required
@@ -482,11 +455,8 @@ export default function DashboardPage() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">Titolo</label>
                   <input
-                    type="text"
-                    value={titolo}
-                    onChange={(e) => setTitolo(e.target.value)}
-                    placeholder="es. Someone Like You"
-                    required
+                    type="text" value={titolo} onChange={(e) => setTitolo(e.target.value)}
+                    placeholder="es. Someone Like You" required
                     className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 text-sm"
                   />
                 </div>
@@ -494,11 +464,8 @@ export default function DashboardPage() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">Artista</label>
                   <input
-                    type="text"
-                    value={artista}
-                    onChange={(e) => setArtista(e.target.value)}
-                    placeholder="es. Adele"
-                    required
+                    type="text" value={artista} onChange={(e) => setArtista(e.target.value)}
+                    placeholder="es. Adele" required
                     className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 text-sm"
                   />
                 </div>
@@ -506,17 +473,14 @@ export default function DashboardPage() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">Tonalità (Opzionale)</label>
                   <input
-                    type="text"
-                    value={tonalita}
-                    onChange={(e) => setTonalita(e.target.value)}
+                    type="text" value={tonalita} onChange={(e) => setTonalita(e.target.value)}
                     placeholder="es. A major, -1"
                     className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 text-sm"
                   />
                 </div>
 
                 <button
-                  type="submit"
-                  disabled={isUploading}
+                  type="submit" disabled={isUploading}
                   className="w-full flex items-center justify-center gap-2 py-4 px-6 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white font-medium transition-all shadow-md text-sm cursor-pointer disabled:opacity-70 mt-2"
                 >
                   <Upload className="w-4 h-4" />
@@ -527,20 +491,14 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ARCHIVIO E PLAYER SOTTO OGNI BASE */}
+        {/* ARCHIVIO BASI */}
         <div className="space-y-4 pt-4">
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">
-                Archivio
-              </span>
-              <h3 className="text-xl sm:text-2xl font-serif text-stone-900 tracking-tight mt-0.5">
-                Le tue basi caricate
-              </h3>
+              <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Archivio</span>
+              <h3 className="text-xl sm:text-2xl font-serif text-stone-900 tracking-tight mt-0.5">Le tue basi caricate</h3>
             </div>
-            <span className="text-xs text-stone-400 font-medium">
-              {basi.length} {basi.length === 1 ? "brano" : "brani"}
-            </span>
+            <span className="text-xs text-stone-400 font-medium">{basi.length} brani</span>
           </div>
 
           {loadingBasi ? (
@@ -556,10 +514,7 @@ export default function DashboardPage() {
                 const isThisActive = activeAudioId === item.id;
 
                 return (
-                  <div 
-                    key={item.id}
-                    className="bg-white rounded-2xl border border-stone-200/80 p-4 sm:p-6 space-y-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:border-[#7A2238]/30 transition-all"
-                  >
+                  <div key={item.id} className="bg-white rounded-2xl border border-stone-200/80 p-4 sm:p-6 space-y-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
@@ -611,62 +566,6 @@ export default function DashboardPage() {
                         </button>
                       </div>
                     </div>
-
-                    {/* UI PLAYER INTERATTIVO SOTTO LA BASE */}
-                    {isThisActive && (
-                      <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 space-y-3 mt-3 animate-fadeIn">
-                        <div className="flex items-center justify-between text-xs text-stone-500 font-mono">
-                          <span>{formatTime(currentTime)}</span>
-                          <span className="font-semibold text-[#7A2238]">Lettore attivo ({playbackRate}x)</span>
-                          <span>{formatTime(duration || 0)}</span>
-                        </div>
-
-                        {/* Barra di scorrimento */}
-                        <input
-                          type="range"
-                          min={0}
-                          max={duration || 100}
-                          value={currentTime}
-                          onChange={handleSeek}
-                          className="w-full accent-[#7A2238] cursor-pointer"
-                        />
-
-                        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleSkip(-10)}
-                              className="p-2 bg-white border border-stone-200 rounded-lg text-stone-700 hover:bg-stone-100 cursor-pointer"
-                              title="Indietro 10 secondi"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleSkip(10)}
-                              className="p-2 bg-white border border-stone-200 rounded-lg text-stone-700 hover:bg-stone-100 cursor-pointer"
-                              title="Avanti 10 secondi"
-                            >
-                              <RotateCw className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            <Sliders className="w-3.5 h-3.5 text-stone-500 mr-1" />
-                            <span className="text-[10px] uppercase font-bold text-stone-500">Velocità:</span>
-                            {[0.5, 0.75, 1, 1.25, 1.5].map((rate) => (
-                              <button
-                                key={rate}
-                                onClick={() => changeTrackSpeed(rate)}
-                                className={`px-2 py-1 rounded-md text-xs font-medium cursor-pointer transition-all ${
-                                  playbackRate === rate ? 'bg-[#7A2238] text-white' : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-100'
-                                }`}
-                              >
-                                {rate}x
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -675,8 +574,100 @@ export default function DashboardPage() {
         </div>
       </main>
 
+      {/* MINI-PLAYER FISSO IN BASSO A DESTRA (PERSISTENTE OVUNQUE) */}
+      {activeAudioId && (() => {
+        const activeTrack = basi.find(b => b.id === activeAudioId);
+        if (!activeTrack) return null;
+        return (
+          <div className="fixed bottom-6 right-6 z-50 bg-white border border-stone-200 shadow-2xl rounded-2xl p-4 w-80 sm:w-96 space-y-3 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-bold tracking-widest text-[#7A2238] uppercase">
+                In riproduzione
+              </span>
+              <button
+                onClick={() => {
+                  if (audioRef.current) {
+                    audioRef.current.pause();
+                    setActiveAudioId(null);
+                    setIsPlaying(false);
+                  }
+                }}
+                className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer"
+                title="Chiudi lettore"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
+                <FileAudio className="w-5 h-5" />
+              </div>
+              <div className="overflow-hidden flex-1">
+                <h5 className="font-serif text-sm font-medium text-stone-900 truncate">
+                  {activeTrack.titolo}
+                </h5>
+                <p className="text-[11px] text-stone-500 truncate">
+                  {activeTrack.artista} {activeTrack.tonalita ? `· ${activeTrack.tonalita}` : ''}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <input
+                type="range" min={0} max={duration || 100} value={currentTime} onChange={handleSeek}
+                className="w-full accent-[#7A2238] cursor-pointer"
+              />
+              <div className="flex items-center justify-between text-[10px] text-stone-400 font-mono">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration || 0)}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => handleSkip(-10)}
+                  className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg text-stone-700 cursor-pointer"
+                  title="Indietro 10s"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => handleSkip(10)}
+                  className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg text-stone-700 cursor-pointer"
+                  title="Avanti 10s"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (audioRef.current) {
+                      if (isPlaying) {
+                        audioRef.current.pause();
+                        setIsPlaying(false);
+                      } else {
+                        audioRef.current.play();
+                        setIsPlaying(true);
+                      }
+                    }
+                  }}
+                  className="px-4 py-1.5 bg-[#7A2238] hover:bg-[#651c2e] text-white text-xs font-medium rounded-xl flex items-center gap-1 cursor-pointer shadow-xs"
+                >
+                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                  <span>{isPlaying ? "Pausa" : "Play"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-2xl text-xs font-medium shadow-2xl transition-all ${
+        <div className={`fixed bottom-6 left-6 z-50 px-5 py-3 rounded-2xl text-xs font-medium shadow-2xl transition-all ${
           toast.type === 'success' ? 'bg-stone-900 text-white' : 'bg-[#7A2238] text-white'
         }`}>
           <span>{toast.message}</span>

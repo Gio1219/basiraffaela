@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Sliders } from "lucide-react";
+import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Sliders, Maximize2, Minimize2 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -90,12 +90,13 @@ export default function MaestraDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Player Audio Avanzato
+  // Player Audio Avanzato & Fullscreen
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
+  const [isExpandedPlayer, setIsExpandedPlayer] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -377,6 +378,7 @@ export default function MaestraDashboardPage() {
       audioRef.current.pause();
       setActiveAudioId(null);
       setIsPlaying(false);
+      setIsExpandedPlayer(false);
     }
     
     const { error } = await supabase.from("basi").delete().eq("id", id);
@@ -1096,95 +1098,191 @@ export default function MaestraDashboardPage() {
 
       </main>
 
-      {/* MINI-PLAYER FISSO IN BASSO A DESTRA (PERSISTENTE NELL'ORARIO O OVUNQUE) */}
+      {/* MINI-PLAYER FISSO IN BASSO A DESTRA CON TASTO SCHERMO INTERO */}
       {activeAudioId && (() => {
         const activeTrack = basi.find(b => b.id === activeAudioId);
         if (!activeTrack) return null;
         return (
-          <div className="fixed bottom-6 right-6 z-50 bg-white border border-stone-200 shadow-2xl rounded-2xl p-4 w-80 sm:w-96 space-y-3 animate-fadeIn">
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] font-bold tracking-widest text-[#7A2238] uppercase">
-                Allievo: {activeTrack.allievo_nome} {activeTrack.allievo_cognome}
-              </span>
-              <button
-                onClick={() => {
-                  if (audioRef.current) {
-                    audioRef.current.pause();
-                    setActiveAudioId(null);
-                    setIsPlaying(false);
-                  }
-                }}
-                className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer"
-                title="Chiudi lettore"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
-                <FileAudio className="w-5 h-5" />
-              </div>
-              <div className="overflow-hidden flex-1">
-                <h5 className="font-serif text-sm font-medium text-stone-900 truncate">
-                  {activeTrack.titolo}
-                </h5>
-                <p className="text-[11px] text-stone-500 truncate">
-                  {activeTrack.artista} {activeTrack.tonalita ? `· ${activeTrack.tonalita}` : ''}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <input
-                type="range" min={0} max={duration || 100} value={currentTime} onChange={handleSeek}
-                className="w-full accent-[#7A2238] cursor-pointer"
-              />
-              <div className="flex items-center justify-between text-[10px] text-stone-400 font-mono">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration || 0)}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-1">
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => handleSkip(-10)}
-                  className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg text-stone-700 cursor-pointer"
-                  title="Indietro 10s"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => handleSkip(10)}
-                  className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg text-stone-700 cursor-pointer"
-                  title="Avanti 10s"
-                >
-                  <RotateCw className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    if (audioRef.current) {
-                      if (isPlaying) {
+          <>
+            {/* MINI PLAYER */}
+            <div className="fixed bottom-6 right-6 z-50 bg-white border border-stone-200 shadow-2xl rounded-2xl p-4 w-80 sm:w-96 space-y-3 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-bold tracking-widest text-[#7A2238] uppercase">
+                  Allievo: {activeTrack.allievo_nome} {activeTrack.allievo_cognome}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setIsExpandedPlayer(true)}
+                    className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer"
+                    title="Schermo intero / Espandi"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (audioRef.current) {
                         audioRef.current.pause();
+                        setActiveAudioId(null);
                         setIsPlaying(false);
-                      } else {
-                        audioRef.current.play();
-                        setIsPlaying(true);
+                        setIsExpandedPlayer(false);
                       }
-                    }
-                  }}
-                  className="px-4 py-1.5 bg-[#7A2238] hover:bg-[#651c2e] text-white text-xs font-medium rounded-xl flex items-center gap-1 cursor-pointer shadow-xs"
-                >
-                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                  <span>{isPlaying ? "Pausa" : "Play"}</span>
-                </button>
+                    }}
+                    className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer"
+                    title="Chiudi lettore"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
+                  <FileAudio className="w-5 h-5" />
+                </div>
+                <div className="overflow-hidden flex-1">
+                  <h5 className="font-serif text-sm font-medium text-stone-900 truncate">
+                    {activeTrack.titolo}
+                  </h5>
+                  <p className="text-[11px] text-stone-500 truncate">
+                    {activeTrack.artista} {activeTrack.tonalita ? `· ${activeTrack.tonalita}` : ''}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <input
+                  type="range" min={0} max={duration || 100} value={currentTime} onChange={handleSeek}
+                  className="w-full accent-[#7A2238] cursor-pointer"
+                />
+                <div className="flex items-center justify-between text-[10px] text-stone-400 font-mono">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(duration || 0)}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => handleSkip(-10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg text-stone-700 cursor-pointer" title="Indietro 10s">
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => handleSkip(10)} className="p-1.5 bg-stone-100 hover:bg-stone-200 rounded-lg text-stone-700 cursor-pointer" title="Avanti 10s">
+                    <RotateCw className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (audioRef.current) {
+                        if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
+                        else { audioRef.current.play(); setIsPlaying(true); }
+                      }
+                    }}
+                    className="px-4 py-1.5 bg-[#7A2238] hover:bg-[#651c2e] text-white text-xs font-medium rounded-xl flex items-center gap-1 cursor-pointer shadow-xs"
+                  >
+                    {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    <span>{isPlaying ? "Pausa" : "Play"}</span>
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+
+            {/* EXPANDED / FULLSCREEN PLAYER MODAL */}
+            {isExpandedPlayer && (
+              <div className="fixed inset-0 z-50 bg-[#FCFBF9] flex flex-col justify-between p-6 sm:p-12 animate-fadeIn">
+                <div className="flex items-center justify-between max-w-4xl w-full mx-auto">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center">
+                      <Music className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-widest text-[#7A2238]">Lettore a Schermo Intero</h4>
+                      <p className="text-[11px] text-stone-500">Allievo: {activeTrack.allievo_nome} {activeTrack.allievo_cognome}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setIsExpandedPlayer(false)}
+                    className="p-3 bg-stone-200/60 hover:bg-stone-200 rounded-full text-stone-800 cursor-pointer transition-colors"
+                    title="Riduci a mini-player"
+                  >
+                    <Minimize2 className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="max-w-2xl w-full mx-auto text-center space-y-8 my-auto">
+                  <div className="w-32 h-32 sm:w-48 sm:h-48 mx-auto rounded-3xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shadow-inner">
+                    <FileAudio className="w-16 h-16 sm:w-24 sm:h-24 animate-pulse" />
+                  </div>
+
+                  <div className="space-y-2">
+                    <h2 className="text-3xl sm:text-4xl font-serif text-stone-900 font-medium">{activeTrack.titolo}</h2>
+                    <p className="text-base text-stone-500">{activeTrack.artista} {activeTrack.tonalita ? `· Tonalità: ${activeTrack.tonalita}` : ''}</p>
+                    {activeTrack.commento && (
+                      <div className="mt-4 max-w-md mx-auto bg-[#7A2238]/10 border border-[#7A2238]/20 rounded-2xl p-4 text-xs text-stone-800 text-left">
+                        <span className="font-bold text-[#7A2238] block mb-1 uppercase tracking-wider text-[10px]">Commento Insegnante:</span>
+                        {activeTrack.commento}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <input
+                      type="range" min={0} max={duration || 100} value={currentTime} onChange={handleSeek}
+                      className="w-full accent-[#7A2238] cursor-pointer h-2"
+                    />
+                    <div className="flex items-center justify-between text-xs text-stone-400 font-mono">
+                      <span>{formatTime(currentTime)}</span>
+                      <span>{formatTime(duration || 0)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-6">
+                    <button onClick={() => handleSkip(-10)} className="p-3 bg-stone-100 hover:bg-stone-200 rounded-full text-stone-800 cursor-pointer" title="Indietro 10s">
+                      <RotateCcw className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (audioRef.current) {
+                          if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
+                          else { audioRef.current.play(); setIsPlaying(true); }
+                        }
+                      }}
+                      className="w-16 h-16 bg-[#7A2238] hover:bg-[#651c2e] text-white rounded-full flex items-center justify-center shadow-xl cursor-pointer transition-transform hover:scale-105"
+                    >
+                      {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-1" />}
+                    </button>
+                    <button onClick={() => handleSkip(10)} className="p-3 bg-stone-100 hover:bg-stone-200 rounded-full text-stone-800 cursor-pointer" title="Avanti 10s">
+                      <RotateCw className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2 pt-4">
+                    <Sliders className="w-4 h-4 text-stone-500 mr-1" />
+                    <span className="text-xs uppercase font-bold text-stone-500">Velocità:</span>
+                    {[0.5, 0.75, 1, 1.25, 1.5].map((rate) => (
+                      <button
+                        key={rate}
+                        onClick={() => {
+                          setPlaybackRate(rate);
+                          if (audioRef.current) audioRef.current.playbackRate = rate;
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                          playbackRate === rate ? 'bg-[#7A2238] text-white' : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-100'
+                        }`}
+                      >
+                        {rate}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="text-center text-xs text-stone-400">
+                  Nuova Accademia Toscanini &middot; Canto Moderno &middot; M° Raffaela Carfora
+                </div>
+              </div>
+            )}
+          </>
         );
       })()}
 

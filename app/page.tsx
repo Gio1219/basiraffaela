@@ -187,7 +187,7 @@ export default function LoginPage() {
                     type="text"
                     value={nome}
                     onChange={(e) => setNome(e.target.value)}
-                    placeholder="es. Giovanni"
+                    placeholder="es. Maria"
                     required
                     className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#7A2238]/20 transition-all text-sm shadow-[0_2px_4px_rgba(0,0,0,0.01)]"
                   />
@@ -201,7 +201,7 @@ export default function LoginPage() {
                     type="text"
                     value={cognome}
                     onChange={(e) => setCognome(e.target.value)}
-                    placeholder="es. Russo"
+                    placeholder="es. Rossi"
                     required
                     className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#7A2238]/20 transition-all text-sm shadow-[0_2px_4px_rgba(0,0,0,0.01)]"
                   />

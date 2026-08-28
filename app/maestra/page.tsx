@@ -267,7 +267,7 @@ export default function MaestraDashboardPage() {
         artista: ytArtista.trim() || data.artista,
         tonalita: tonalitaBase,
         commento: commentoBase.trim() || null,
-        file_url: data.file_url || youtubeUrl,
+        file_url: data.file_url,
       };
 
       const { data: inserted, error } = await supabase.from("basi").insert([nuovaBaseRecord]).select();
@@ -279,10 +279,10 @@ export default function MaestraDashboardPage() {
         setYtTitolo("");
         setYtArtista("");
         setCommentoBase("");
-        showToast("Brano da YouTube importato con successo!");
+        showToast("Brano importato con successo!");
       }
     } catch (err: any) {
-      showToast("Impossibile importare da YouTube: " + err.message, "error");
+      showToast("Errore importazione: " + err.message, "error");
     } finally {
       setIsConvertingYoutube(false);
     }
@@ -415,12 +415,18 @@ export default function MaestraDashboardPage() {
       return;
     }
 
+    if (url.includes('youtube.com/watch') || url.includes('youtu.be')) {
+      showToast("Errore: Link YouTube non convertito in file audio diretto.", "error");
+      return;
+    }
+
     stopAudio();
     setActiveAudioId(id);
-    showToast("Caricamento audio...");
+    showToast("Caricamento audio in corso...");
 
     try {
       const response = await fetch(url);
+      if (!response.ok) throw new Error("Errore di rete durante il download del file.");
       const arrayBuffer = await response.arrayBuffer();
 
       if (!audioCtxRef.current) {
@@ -434,7 +440,7 @@ export default function MaestraDashboardPage() {
       playAudioBuffer(decodedBuffer, 0, playbackRate, semitoni);
       showToast("Riproduzione avviata");
     } catch (err) {
-      showToast("Errore caricamento file audio", "error");
+      showToast("Errore caricamento file audio (CORS o file non valido)", "error");
       setActiveAudioId(null);
     }
   };
@@ -1123,7 +1129,7 @@ export default function MaestraDashboardPage() {
 
       </main>
 
-      {/* MINI-PLAYER FISSO IN BASSO A DESTRA CON TRASPOSITORE E SCHERMO INTERO */}
+      {/* MINI-PLAYER FISSO IN BASSO A DESTRA CON TRASPOSITORE (-5 a +5) E SCHERMO INTERO */}
       {activeAudioId && (() => {
         const activeTrack = basi.find(b => b.id === activeAudioId);
         if (!activeTrack) return null;
@@ -1154,15 +1160,18 @@ export default function MaestraDashboardPage() {
                 </div>
               </div>
 
-              {/* TRASPOSITORE RAPIDO */}
-              <div className="bg-stone-50 p-2 rounded-xl border border-stone-200 flex items-center justify-between text-xs">
-                <span className="font-bold text-[10px] uppercase text-stone-600">Tonalità:</span>
-                <div className="flex items-center gap-1">
-                  {[-2, -1, 0, 1, 2].map((s) => (
+              {/* TRASPOSITORE RAPIDO (-5 a +5) */}
+              <div className="bg-stone-50 p-2 rounded-xl border border-stone-200 space-y-1.5">
+                <div className="flex items-center justify-between text-[10px] font-bold uppercase text-stone-600">
+                  <span>Tonalità:</span>
+                  <span className="text-[#7A2238]">{semitoni > 0 ? `+${semitoni}` : semitoni} semitoni</span>
+                </div>
+                <div className="grid grid-cols-11 gap-0.5">
+                  {[-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5].map((s) => (
                     <button
                       key={s}
                       onClick={() => changeSemitones(s)}
-                      className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${semitoni === s ? 'bg-[#7A2238] text-white' : 'bg-white border text-stone-700 hover:bg-stone-100'}`}
+                      className={`py-1 rounded text-[9px] font-bold cursor-pointer transition-all text-center ${semitoni === s ? 'bg-[#7A2238] text-white shadow-sm' : 'bg-white border text-stone-700 hover:bg-stone-100'}`}
                     >
                       {s > 0 ? `+${s}` : s}
                     </button>
@@ -1199,33 +1208,38 @@ export default function MaestraDashboardPage() {
                   <button onClick={() => setIsExpandedPlayer(false)} className="p-3 bg-stone-200/60 hover:bg-stone-200 rounded-full cursor-pointer"><Minimize2 className="w-5 h-5" /></button>
                 </div>
 
-                <div className="max-w-2xl w-full mx-auto text-center space-y-8 my-auto">
-                  <div className="w-36 h-36 mx-auto rounded-3xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shadow-inner">
-                    <Disc className="w-20 h-20 animate-spin" />
+                <div className="max-w-2xl w-full mx-auto text-center space-y-6 my-auto">
+                  <div className="w-32 h-32 mx-auto rounded-3xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shadow-inner">
+                    <Disc className="w-16 h-16 animate-spin" />
                   </div>
 
                   <div className="space-y-2">
-                    <h2 className="text-3xl sm:text-4xl font-serif font-medium">{activeTrack.titolo}</h2>
-                    <p className="text-base text-stone-500">{activeTrack.artista}</p>
+                    <h2 className="text-2xl sm:text-3xl font-serif font-medium">{activeTrack.titolo}</h2>
+                    <p className="text-sm text-stone-500">{activeTrack.artista}</p>
                     {activeTrack.commento && (
-                      <div className="mt-4 max-w-md mx-auto bg-[#7A2238]/10 border border-[#7A2238]/20 rounded-2xl p-4 text-xs text-stone-800 text-left">
+                      <div className="mt-2 max-w-md mx-auto bg-[#7A2238]/10 border border-[#7A2238]/20 rounded-2xl p-3 text-xs text-stone-800 text-left">
                         <span className="font-bold text-[#7A2238] block mb-1 uppercase tracking-wider text-[10px]">Commento Insegnante:</span>
                         {activeTrack.commento}
                       </div>
                     )}
                   </div>
 
-                  {/* TRASPOSITORE DI TONALITÀ A SEMITONI */}
-                  <div className="bg-white border border-stone-200 p-6 rounded-3xl space-y-3 shadow-sm">
-                    <label className="text-xs font-bold uppercase tracking-widest text-[#7A2238] block">Trasponi Tonalità (Semitoni)</label>
-                    <div className="flex items-center justify-center gap-2">
-                      {[-3, -2, -1, 0, 1, 2, 3].map((s) => (
+                  {/* TRASPOSITORE DI TONALITÀ A SEMITONI DA -5 A +5 */}
+                  <div className="bg-white border border-stone-200 p-5 rounded-3xl space-y-3 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold uppercase tracking-widest text-[#7A2238]">Trasponi Tonalità</label>
+                      <span className="text-xs font-bold text-stone-700 bg-stone-100 px-3 py-1 rounded-full">
+                        {semitoni > 0 ? `+${semitoni}` : semitoni} semitoni
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-11 gap-1.5">
+                      {[-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5].map((s) => (
                         <button
                           key={s}
                           onClick={() => changeSemitones(s)}
-                          className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${semitoni === s ? 'bg-[#7A2238] text-white shadow-md' : 'bg-stone-50 border border-stone-200 text-stone-700 hover:bg-stone-100'}`}
+                          className={`py-2 rounded-xl text-xs font-bold cursor-pointer transition-all ${semitoni === s ? 'bg-[#7A2238] text-white shadow-md scale-105' : 'bg-stone-50 border border-stone-200 text-stone-700 hover:bg-stone-100'}`}
                         >
-                          {s > 0 ? `+${s}` : s} semitoni
+                          {s > 0 ? `+${s}` : s}
                         </button>
                       ))}
                     </div>
@@ -1239,7 +1253,7 @@ export default function MaestraDashboardPage() {
                     <button onClick={() => handleSkip(10)} className="p-3 bg-stone-100 hover:bg-stone-200 rounded-full cursor-pointer"><RotateCw className="w-5 h-5" /></button>
                   </div>
 
-                  <div className="flex items-center justify-center gap-2 pt-4">
+                  <div className="flex items-center justify-center gap-2 pt-2">
                     <Sliders className="w-4 h-4 text-stone-500 mr-1" />
                     <span className="text-xs uppercase font-bold text-stone-500">Velocità:</span>
                     {[0.5, 0.75, 1, 1.25, 1.5].map((rate) => (

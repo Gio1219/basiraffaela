@@ -152,10 +152,9 @@ export default function DashboardPage() {
     }
   };
 
-  // Funzione nativa per comprimere e alleggerire l'audio nel browser se supera i limiti
   const compressAudioIfNeeded = async (audioFile: File): Promise<File> => {
     if (audioFile.size <= 45 * 1024 * 1024 || !audioFile.type.startsWith("audio/")) {
-      return audioFile; // Se è già sotto i 45MB procede normalmente
+      return audioFile;
     }
 
     showToast("File pesante rilevato: compressione automatica in corso...");
@@ -164,7 +163,6 @@ export default function DashboardPage() {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-      // Ricampionamento a 22.05kHz in mono per ridurre drasticamente la dimensione
       const sampleRate = 22050;
       const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * sampleRate, sampleRate);
       const source = offlineCtx.createBufferSource();
@@ -180,11 +178,10 @@ export default function DashboardPage() {
       });
     } catch (err) {
       console.error("Errore durante la compressione:", err);
-      return audioFile; // Fallback al file originale se fallisce
+      return audioFile;
     }
   };
 
-  // Utility per convertire il buffer audio in Blob WAV
   const bufferToWav = (buffer: AudioBuffer) => {
     const numOfChan = buffer.numberOfChannels;
     const length = buffer.length * numOfChan * 2 + 44;
@@ -241,7 +238,6 @@ export default function DashboardPage() {
     setIsUploading(true);
 
     try {
-      // Comprime automaticamente il file se supera i limiti di Supabase
       const fileToUpload = await compressAudioIfNeeded(file);
 
       if (fileToUpload.size > 50 * 1024 * 1024) {
@@ -335,9 +331,9 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#FCFBF9] text-stone-900 flex flex-col selection:bg-[#7A2238] selection:text-white relative">
-      <header className="border-b border-stone-200/80 bg-[#FCFBF9]/80 backdrop-blur-md sticky top-0 z-30 px-6 lg:px-16 py-5 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-black flex items-center justify-center shadow-sm border border-stone-200">
+      <header className="border-b border-stone-200/80 bg-[#FCFBF9]/80 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-6 lg:px-16 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-white flex items-center justify-center shadow-sm border border-stone-200/80 shrink-0">
             <Image 
               src="/logo-2.png" 
               alt="Nuova Accademia Toscanini Logo" 
@@ -346,18 +342,18 @@ export default function DashboardPage() {
             />
           </div>
           <div>
-            <h1 className="text-xs font-semibold tracking-[0.2em] uppercase text-stone-900">
+            <h1 className="text-[10px] sm:text-xs font-semibold tracking-[0.15em] sm:tracking-[0.2em] uppercase text-stone-900">
               Nuova Accademia Toscanini
             </h1>
-            <p className="text-[10px] tracking-[0.15em] text-[#7A2238] uppercase font-medium">
+            <p className="text-[9px] sm:text-[10px] tracking-widest sm:tracking-[0.15em] text-[#7A2238] uppercase font-medium">
               Caserta · M° Raffaela Carfora
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3 bg-white border border-stone-200/80 rounded-full py-1.5 pl-3 pr-4 shadow-[0_2px_4px_rgba(0,0,0,0.02)]">
-            <label className="relative w-9 h-9 rounded-full overflow-hidden bg-stone-300 text-stone-800 font-semibold text-xs flex items-center justify-center cursor-pointer group shadow-inner">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 bg-white border border-stone-200/80 rounded-full py-1 pl-2.5 pr-3.5 sm:py-1.5 sm:pl-3 sm:pr-4 shadow-[0_2px_4px_rgba(0,0,0,0.02)]">
+            <label className="relative w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden bg-stone-300 text-stone-800 font-semibold text-xs flex items-center justify-center cursor-pointer group shadow-inner shrink-0">
               {avatarUrl ? (
                 <Image src={avatarUrl} alt="Profilo" fill className="object-cover" />
               ) : (
@@ -374,19 +370,19 @@ export default function DashboardPage() {
               />
             </label>
 
-            <div className="text-left">
+            <div className="text-left hidden xs:block">
               <p className="text-xs font-medium text-stone-900 leading-none">
                 {nome} {cognome}
               </p>
               <p className="text-[10px] text-stone-400 tracking-wider uppercase mt-0.5">
-                {isUploadingAvatar ? "Aggiornamento foto..." : "Allievo/a"}
+                {isUploadingAvatar ? "Aggiornamento..." : "Allievo/a"}
               </p>
             </div>
           </div>
 
           <button
             onClick={handleLogout}
-            className="w-10 h-10 rounded-full border border-stone-200/80 bg-white hover:border-red-200 hover:bg-red-50 hover:text-red-700 text-stone-600 flex items-center justify-center transition-all cursor-pointer shadow-xs"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-stone-200/80 bg-white hover:border-red-200 hover:bg-red-50 hover:text-red-700 text-stone-600 flex items-center justify-center transition-all cursor-pointer shadow-xs shrink-0"
             title="Esci"
           >
             <LogOut className="w-4 h-4" />
@@ -394,24 +390,24 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-6xl w-full mx-auto p-6 lg:p-12 space-y-12">
+      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-12 space-y-10 sm:space-y-12">
         <div className="space-y-4">
           <div>
             <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">
               Le tue basi
             </span>
-            <h2 className="text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
               Carica una nuova <span className="italic font-light">base musicale</span>
             </h2>
-            <p className="text-stone-500 text-xs lg:text-sm font-light mt-1">
+            <p className="text-stone-500 text-xs sm:text-sm font-light mt-1">
               I file audio pesanti verranno ottimizzati automaticamente dal browser prima dell'invio.
             </p>
           </div>
 
-          <div className="bg-white rounded-3xl border border-stone-200/80 p-8 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+          <div className="bg-white rounded-3xl border border-stone-200/80 p-6 sm:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
             <form onSubmit={handleUpload} className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               <div className="lg:col-span-5">
-                <label className="relative flex flex-col items-center justify-center p-8 border-2 border-dashed border-stone-300 rounded-2xl bg-stone-50/50 hover:bg-stone-50 transition-all cursor-pointer group min-h-55">
+                <label className="relative flex flex-col items-center justify-center p-6 sm:p-8 border-2 border-dashed border-stone-300 rounded-2xl bg-stone-50/50 hover:bg-stone-50 transition-all cursor-pointer group min-h-48 sm:min-h-55">
                   <div className="w-12 h-12 rounded-full bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
                     <Upload className="w-5 h-5" />
                   </div>
@@ -492,7 +488,7 @@ export default function DashboardPage() {
               <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">
                 Archivio
               </span>
-              <h3 className="text-2xl font-serif text-stone-900 tracking-tight mt-0.5">
+              <h3 className="text-xl sm:text-2xl font-serif text-stone-900 tracking-tight mt-0.5">
                 Le tue basi caricate
               </h3>
             </div>
@@ -518,14 +514,14 @@ export default function DashboardPage() {
               {basi.map((item) => (
                 <div 
                   key={item.id}
-                  className="bg-white rounded-2xl border border-stone-200/80 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:border-[#7A2238]/30 transition-all"
+                  className="bg-white rounded-2xl border border-stone-200/80 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:border-[#7A2238]/30 transition-all"
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
                       <FileAudio className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-serif text-lg text-stone-900 font-medium leading-tight">
+                      <h4 className="font-serif text-base sm:text-lg text-stone-900 font-medium leading-tight">
                         {item.titolo}
                       </h4>
                       <p className="text-xs text-stone-500 mt-0.5">
@@ -540,7 +536,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center w-full sm:w-auto justify-end">
                     <button
                       onClick={() => handleDownload(item.file_url, `${item.titolo}_${item.artista}`)}
                       className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#7A2238] text-white text-xs font-medium hover:bg-[#651c2e] transition-colors cursor-pointer shadow-xs"
@@ -564,7 +560,6 @@ export default function DashboardPage() {
                     <button
                       onClick={() => handleDeleteBase(item.id)}
                       className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium hover:bg-red-100 transition-colors cursor-pointer"
-                      title="Elimina base"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Elimina</span>

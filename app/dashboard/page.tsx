@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Music, Upload, LogOut, FileAudio, Camera, MessageSquare, Download, Trash2, Play, Pause, Activity, Sliders } from "lucide-react";
+import { Music, Upload, LogOut, FileAudio, Camera, MessageSquare, Download, Trash2, Play, Pause, Activity, RotateCcw, RotateCw, Sliders } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -35,13 +35,16 @@ export default function DashboardPage() {
   const [loadingBasi, setLoadingBasi] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Stati per il Metronomo
+  // Metronomo
   const [bpm, setBpm] = useState(100);
   const [isMetronomeActive, setIsMetronomeActive] = useState(false);
   const metronomeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Stati per il Mini-Player attivo
+  // Player Audio Avanzato per singola traccia
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -51,16 +54,21 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    const storedNome = localStorage.getItem("allievo_nome") || "Maria";
-    const storedCognome = localStorage.getItem("allievo_cognome") || "Rossi";
+    const storedNome = localStorage.getItem("allievo_nome");
+    const storedCognome = localStorage.getItem("allievo_cognome");
     
+    if (!storedNome || !storedCognome) {
+      router.push("/");
+      return;
+    }
+
     setNome(storedNome);
     setCognome(storedCognome);
     fetchUserData(storedNome, storedCognome);
     fetchBasi(storedNome, storedCognome);
   }, [router]);
 
-  // Gestione del Metronomo con Web Audio API
+  // Metronomo Audio
   useEffect(() => {
     if (!isMetronomeActive) {
       if (metronomeTimerRef.current) clearInterval(metronomeTimerRef.current);
@@ -69,31 +77,25 @@ export default function DashboardPage() {
 
     const interval = (60 / bpm) * 1000;
     metronomeTimerRef.current = setInterval(() => {
-      playClickSound();
+      try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.05);
+      } catch (e) {}
     }, interval);
 
     return () => {
       if (metronomeTimerRef.current) clearInterval(metronomeTimerRef.current);
     };
   }, [isMetronomeActive, bpm]);
-
-  const playClickSound = () => {
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Tono acuto
-      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.05);
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   const fetchUserData = async (n: string, c: string) => {
     const { data } = await supabase
@@ -173,82 +175,6 @@ export default function DashboardPage() {
     }
   };
 
-  const compressAudioIfNeeded = async (audioFile: File): Promise<File> => {
-    if (audioFile.size <= 45 * 1024 * 1024 || !audioFile.type.startsWith("audio/")) {
-      return audioFile;
-    }
-
-    showToast("File pesante rilevato: compressione automatica in corso...");
-    try {
-      const arrayBuffer = await audioFile.arrayBuffer();
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-      const sampleRate = 22050;
-      const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * sampleRate, sampleRate);
-      const source = offlineCtx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(offlineCtx.destination);
-      source.start(0);
-
-      const renderedBuffer = await offlineCtx.startRendering();
-      const wavBlob = bufferToWav(renderedBuffer);
-
-      return new File([wavBlob], audioFile.name.replace(/\.[^/.]+$/, "") + "_ottimizzato.wav", {
-        type: "audio/wav",
-      });
-    } catch (err) {
-      console.error("Errore durante la compressione:", err);
-      return audioFile;
-    }
-  };
-
-  const bufferToWav = (buffer: AudioBuffer) => {
-    const numOfChan = buffer.numberOfChannels;
-    const length = buffer.length * numOfChan * 2 + 44;
-    const out = new DataView(new ArrayBuffer(length));
-    let channels = [];
-    let sampleRate = buffer.sampleRate;
-    let offset = 0;
-    let pos = 0;
-
-    writeString('RIFF'); pos += 4;
-    out.setUint32(pos, length - 8, true); pos += 4;
-    writeString('WAVE'); pos += 4;
-    writeString('fmt '); pos += 4;
-    out.setUint32(pos, 16, true); pos += 4;
-    out.setUint16(pos, 1, true); pos += 2;
-    out.setUint16(pos, numOfChan, true); pos += 2;
-    out.setUint32(pos, sampleRate, true); pos += 4;
-    out.setUint32(pos, sampleRate * 2 * numOfChan, true); pos += 4;
-    out.setUint16(pos, numOfChan * 2, true); pos += 2;
-    out.setUint16(pos, 16, true); pos += 2;
-    writeString('data'); pos += 4;
-    out.setUint32(pos, length - pos - 4, true); pos += 4;
-
-    for (let i = 0; i < buffer.numberOfChannels; i++) {
-      channels.push(buffer.getChannelData(i));
-    }
-
-    while (pos < length) {
-      for (let i = 0; i < numOfChan; i++) {
-        let sample = Math.max(-1, Math.min(1, channels[i][offset]));
-        sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767)|0;
-        out.setInt16(pos, sample, true);
-        pos += 2;
-      }
-      offset++;
-    }
-
-    return new Blob([out.buffer], { type: 'audio/wav' });
-
-    function writeString(str: string) {
-      for (let i = 0; i < str.length; i++) {
-        out.setUint8(pos++, str.charCodeAt(i));
-      }
-    }
-  };
-
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !titolo.trim() || !artista.trim()) {
@@ -256,24 +182,21 @@ export default function DashboardPage() {
       return;
     }
 
+    if (file.size > 50 * 1024 * 1024) {
+      showToast("Il file supera i 50MB consentiti da Supabase.", "error");
+      return;
+    }
+
     setIsUploading(true);
 
     try {
-      const fileToUpload = await compressAudioIfNeeded(file);
-
-      if (fileToUpload.size > 50 * 1024 * 1024) {
-        showToast("Il file è ancora troppo grande dopo la compressione (max 50MB).", "error");
-        setIsUploading(false);
-        return;
-      }
-
-      const fileExt = fileToUpload.name.split(".").pop();
+      const fileExt = file.name.split(".").pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = `${nome}_${cognome}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("basi")
-        .upload(filePath, fileToUpload);
+        .upload(filePath, file);
 
       if (uploadError) {
         showToast("Errore caricamento file: " + uploadError.message, "error");
@@ -308,7 +231,7 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error(err);
-      showToast("Errore imprevisto durante l'elaborazione.", "error");
+      showToast("Errore imprevisto durante l'invio.", "error");
     } finally {
       setIsUploading(false);
     }
@@ -316,6 +239,10 @@ export default function DashboardPage() {
 
   const handleDeleteBase = async (id: string) => {
     if (!confirm("Vuoi davvero eliminare questa base musicale?")) return;
+    if (activeAudioId === id && audioRef.current) {
+      audioRef.current.pause();
+      setActiveAudioId(null);
+    }
     const { error } = await supabase.from("basi").delete().eq("id", id);
     if (error) {
       showToast("Errore durante l'eliminazione: " + error.message, "error");
@@ -343,14 +270,16 @@ export default function DashboardPage() {
     }
   };
 
-  const handlePlayToggle = (id: string, url: string) => {
+  // Gestione Player Audio UI
+  const togglePlayTrack = (id: string, url: string) => {
     if (activeAudioId === id) {
       if (audioRef.current) {
-        if (audioRef.current.paused) {
-          audioRef.current.play();
-        } else {
+        if (isPlaying) {
           audioRef.current.pause();
-          setActiveAudioId(null);
+          setIsPlaying(false);
+        } else {
+          audioRef.current.play();
+          setIsPlaying(true);
         }
       }
     } else {
@@ -359,21 +288,49 @@ export default function DashboardPage() {
       }
       const audio = new Audio(url);
       audio.playbackRate = playbackRate;
-      audio.play();
       audioRef.current = audio;
       setActiveAudioId(id);
+      setIsPlaying(true);
 
+      audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
+      audio.onloadedmetadata = () => setDuration(audio.duration);
       audio.onended = () => {
-        setActiveAudioId(null);
+        setIsPlaying(false);
+        setCurrentTime(0);
       };
+
+      audio.play().catch((e) => {
+        console.error(e);
+        showToast("Impossibile riprodurre l'audio", "error");
+      });
     }
   };
 
-  const handleSpeedChange = (rate: number) => {
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = Number(e.target.value);
+    setCurrentTime(time);
+    if (audioRef.current) {
+      audioRef.current.currentTime = time;
+    }
+  };
+
+  const handleSkip = (seconds: number) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + seconds));
+    }
+  };
+
+  const changeTrackSpeed = (rate: number) => {
     setPlaybackRate(rate);
     if (audioRef.current) {
       audioRef.current.playbackRate = rate;
     }
+  };
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
   const handleLogout = () => {
@@ -397,10 +354,10 @@ export default function DashboardPage() {
           </div>
           <div>
             <h1 className="text-[10px] sm:text-xs font-semibold tracking-[0.15em] sm:tracking-[0.2em] uppercase text-stone-900">
-              Accademia Musicale
+              Nuova Accademia Toscanini
             </h1>
             <p className="text-[9px] sm:text-[10px] tracking-widest sm:tracking-[0.15em] text-[#7A2238] uppercase font-medium">
-              Area Studenti
+              Canto Moderno · M° Raffaela Carfora
             </p>
           </div>
         </div>
@@ -424,7 +381,7 @@ export default function DashboardPage() {
               />
             </label>
 
-            <div className="text-left hidden xs:block">
+            <div className="text-left">
               <p className="text-xs font-medium text-stone-900 leading-none">
                 {nome} {cognome}
               </p>
@@ -446,7 +403,7 @@ export default function DashboardPage() {
 
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-12 space-y-10 sm:space-y-12">
         
-        {/* WIDGET METRONOMO DIGITALE */}
+        {/* METRONOMO */}
         <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${isMetronomeActive ? 'bg-[#7A2238] text-white animate-pulse' : 'bg-stone-100 text-stone-600'}`}>
@@ -454,7 +411,7 @@ export default function DashboardPage() {
             </div>
             <div>
               <h3 className="font-serif text-lg text-stone-900 font-medium">Metronomo di Studio</h3>
-              <p className="text-xs text-stone-500">Imposta il tempo in BPM per la tua sessione</p>
+              <p className="text-xs text-stone-500">Imposta il tempo in BPM</p>
             </div>
           </div>
 
@@ -484,7 +441,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* SEZIONE UPLOAD */}
+        {/* UPLOAD */}
         <div className="space-y-4">
           <div>
             <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">
@@ -494,7 +451,7 @@ export default function DashboardPage() {
               Carica una nuova <span className="italic font-light">base musicale</span>
             </h2>
             <p className="text-stone-500 text-xs sm:text-sm font-light mt-1">
-              I file audio pesanti verranno ottimizzati automaticamente dal browser prima dell'invio.
+              File MP3, WAV o M4A (Max 50MB).
             </p>
           </div>
 
@@ -509,7 +466,7 @@ export default function DashboardPage() {
                     {file ? file.name : "Trascina qui il tuo file"}
                   </span>
                   <span className="text-[11px] text-stone-400 text-center mt-1">
-                    {file ? "File pronto per il caricamento" : "o clicca per selezionarlo · MP3 · WAV"}
+                    {file ? "File pronto" : "o clicca per selezionarlo · MP3 · WAV"}
                   </span>
                   <input
                     type="file"
@@ -523,62 +480,56 @@ export default function DashboardPage() {
 
               <div className="lg:col-span-7 space-y-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">
-                    Titolo
-                  </label>
+                  <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">Titolo</label>
                   <input
                     type="text"
                     value={titolo}
                     onChange={(e) => setTitolo(e.target.value)}
                     placeholder="es. Someone Like You"
                     required
-                    className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#7A2238]/10 text-sm transition-all"
+                    className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 text-sm"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">
-                    Artista
-                  </label>
+                  <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">Artista</label>
                   <input
                     type="text"
                     value={artista}
                     onChange={(e) => setArtista(e.target.value)}
                     placeholder="es. Adele"
                     required
-                    className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#7A2238]/10 text-sm transition-all"
+                    className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 text-sm"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">
-                    Tonalità (Opzionale)
-                  </label>
+                  <label className="text-[10px] font-bold tracking-widest text-stone-600 uppercase">Tonalità (Opzionale)</label>
                   <input
                     type="text"
                     value={tonalita}
                     onChange={(e) => setTonalita(e.target.value)}
                     placeholder="es. A major, -1"
-                    className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#7A2238]/10 text-sm transition-all"
+                    className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 text-sm"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={isUploading}
-                  className="w-full flex items-center justify-center gap-2 py-4 px-6 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white font-medium transition-all shadow-md text-sm cursor-pointer active:scale-[0.99] disabled:opacity-70 mt-2"
+                  className="w-full flex items-center justify-center gap-2 py-4 px-6 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white font-medium transition-all shadow-md text-sm cursor-pointer disabled:opacity-70 mt-2"
                 >
                   <Upload className="w-4 h-4" />
-                  <span>{isUploading ? "Elaborazione e caricamento..." : "Carica base"}</span>
+                  <span>{isUploading ? "Caricamento in corso..." : "Carica base"}</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
 
-        {/* ARCHIVIO E MINI PLAYER */}
+        {/* ARCHIVIO E PLAYER SOTTO OGNI BASE */}
         <div className="space-y-4 pt-4">
-          <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center justify-between">
             <div>
               <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">
                 Archivio
@@ -587,96 +538,135 @@ export default function DashboardPage() {
                 Le tue basi caricate
               </h3>
             </div>
-
-            {/* SELETTORE VELOCITÀ AUDIO GLOBALE */}
-            <div className="flex items-center gap-2 bg-white border border-stone-200 px-3 py-1.5 rounded-xl shadow-xs">
-              <Sliders className="w-4 h-4 text-[#7A2238]" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600">Velocità:</span>
-              {[0.5, 0.75, 1, 1.25, 1.5].map((rate) => (
-                <button
-                  key={rate}
-                  onClick={() => handleSpeedChange(rate)}
-                  className={`px-2 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
-                    playbackRate === rate ? 'bg-[#7A2238] text-white' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
-                  }`}
-                >
-                  {rate}x
-                </button>
-              ))}
-            </div>
+            <span className="text-xs text-stone-400 font-medium">
+              {basi.length} {basi.length === 1 ? "brano" : "brani"}
+            </span>
           </div>
 
           {loadingBasi ? (
-            <div className="py-12 text-center text-stone-400 text-sm">
-              Caricamento archivio...
-            </div>
+            <div className="py-12 text-center text-stone-400 text-sm">Caricamento archivio...</div>
           ) : basi.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-stone-200/80 p-12 text-center space-y-3 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-              <div className="w-12 h-12 rounded-full bg-stone-100 text-stone-400 flex items-center justify-center mx-auto">
-                <Music className="w-5 h-5" />
-              </div>
+            <div className="bg-white rounded-3xl border border-stone-200/80 p-12 text-center space-y-3 shadow-sm">
+              <Music className="w-8 h-8 text-stone-300 mx-auto" />
               <p className="text-stone-800 font-medium text-sm">Nessuna base caricata</p>
-              <p className="text-stone-400 text-xs">Inizia caricando il tuo primo brano qui sopra.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
               {basi.map((item) => {
-                const isPlaying = activeAudioId === item.id;
+                const isThisActive = activeAudioId === item.id;
 
                 return (
                   <div 
                     key={item.id}
-                    className="bg-white rounded-2xl border border-stone-200/80 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:border-[#7A2238]/30 transition-all"
+                    className="bg-white rounded-2xl border border-stone-200/80 p-4 sm:p-6 space-y-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:border-[#7A2238]/30 transition-all"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
-                        <FileAudio className="w-5 h-5" />
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
+                          <FileAudio className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="font-serif text-base sm:text-lg text-stone-900 font-medium leading-tight">
+                            {item.titolo}
+                          </h4>
+                          <p className="text-xs text-stone-500 mt-0.5">
+                            {item.artista} {item.tonalita ? `· Tonalità: ${item.tonalita}` : ""}
+                          </p>
+                          {item.commento && (
+                            <div className="mt-2.5 flex items-start gap-2 bg-[#7A2238]/10 border border-[#7A2238]/20 rounded-xl p-3 text-xs text-stone-800">
+                              <span className="bg-[#7A2238] text-white text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 mt-0.5">
+                                Feedback Insegnante
+                              </span>
+                              <span>{item.commento}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="font-serif text-base sm:text-lg text-stone-900 font-medium leading-tight">
-                          {item.titolo}
-                        </h4>
-                        <p className="text-xs text-stone-500 mt-0.5">
-                          {item.artista} {item.tonalita ? `· Tonalità: ${item.tonalita}` : ""}
-                        </p>
-                        {item.commento && (
-                          <div className="mt-2.5 flex items-start gap-2 bg-[#7A2238]/10 border border-[#7A2238]/20 rounded-xl p-3 text-xs text-stone-800">
-                            <span className="bg-[#7A2238] text-white text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 mt-0.5">
-                              Feedback Insegnante
-                            </span>
-                            <span>{item.commento}</span>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => togglePlayTrack(item.id, item.file_url)}
+                          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer shadow-xs ${
+                            isThisActive && isPlaying ? 'bg-amber-600 text-white' : 'bg-[#7A2238] text-white hover:bg-[#651c2e]'
+                          }`}
+                        >
+                          {isThisActive && isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                          <span>{isThisActive && isPlaying ? "Pausa" : "Ascolta"}</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDownload(item.file_url, `${item.titolo}_${item.artista}`)}
+                          className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-stone-200 text-stone-700 text-xs font-medium hover:bg-stone-50 cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5 text-[#7A2238]" />
+                          <span>Scarica</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteBase(item.id)}
+                          className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium hover:bg-red-100 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Elimina</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* UI PLAYER INTERATTIVO SOTTO LA BASE */}
+                    {isThisActive && (
+                      <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 space-y-3 mt-3 animate-fadeIn">
+                        <div className="flex items-center justify-between text-xs text-stone-500 font-mono">
+                          <span>{formatTime(currentTime)}</span>
+                          <span className="font-semibold text-[#7A2238]">Lettore attivo ({playbackRate}x)</span>
+                          <span>{formatTime(duration || 0)}</span>
+                        </div>
+
+                        {/* Barra di scorrimento */}
+                        <input
+                          type="range"
+                          min={0}
+                          max={duration || 100}
+                          value={currentTime}
+                          onChange={handleSeek}
+                          className="w-full accent-[#7A2238] cursor-pointer"
+                        />
+
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleSkip(-10)}
+                              className="p-2 bg-white border border-stone-200 rounded-lg text-stone-700 hover:bg-stone-100 cursor-pointer"
+                              title="Indietro 10 secondi"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleSkip(10)}
+                              className="p-2 bg-white border border-stone-200 rounded-lg text-stone-700 hover:bg-stone-100 cursor-pointer"
+                              title="Avanti 10 secondi"
+                            >
+                              <RotateCw className="w-3.5 h-3.5" />
+                            </button>
                           </div>
-                        )}
+
+                          <div className="flex items-center gap-1.5">
+                            <Sliders className="w-3.5 h-3.5 text-stone-500 mr-1" />
+                            <span className="text-[10px] uppercase font-bold text-stone-500">Velocità:</span>
+                            {[0.5, 0.75, 1, 1.25, 1.5].map((rate) => (
+                              <button
+                                key={rate}
+                                onClick={() => changeTrackSpeed(rate)}
+                                className={`px-2 py-1 rounded-md text-xs font-medium cursor-pointer transition-all ${
+                                  playbackRate === rate ? 'bg-[#7A2238] text-white' : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-100'
+                                }`}
+                              >
+                                {rate}x
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center w-full sm:w-auto justify-end">
-                      <button
-                        onClick={() => handlePlayToggle(item.id, item.file_url)}
-                        className={`flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer shadow-xs ${
-                          isPlaying ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-[#7A2238] text-white hover:bg-[#651c2e]'
-                        }`}
-                      >
-                        {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                        <span>{isPlaying ? "Pausa" : `Ascolta (${playbackRate}x)`}</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleDownload(item.file_url, `${item.titolo}_${item.artista}`)}
-                        className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-stone-200 text-stone-700 text-xs font-medium hover:bg-stone-50 transition-colors cursor-pointer"
-                      >
-                        <Download className="w-3.5 h-3.5 text-[#7A2238]" />
-                        <span>Scarica</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleDeleteBase(item.id)}
-                        className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium hover:bg-red-100 transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Elimina</span>
-                      </button>
-                    </div>
+                    )}
                   </div>
                 );
               })}
@@ -686,7 +676,7 @@ export default function DashboardPage() {
       </main>
 
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-2xl text-xs font-medium shadow-2xl transition-all flex items-center gap-2 ${
+        <div className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-2xl text-xs font-medium shadow-2xl transition-all ${
           toast.type === 'success' ? 'bg-stone-900 text-white' : 'bg-[#7A2238] text-white'
         }`}>
           <span>{toast.message}</span>
@@ -694,7 +684,7 @@ export default function DashboardPage() {
       )}
 
       <footer className="border-t border-stone-200/80 py-6 px-6 text-center text-xs text-stone-400">
-        Piattaforma Accademia Musicale &middot; Area Riservata Studenti
+        Nuova Accademia Toscanini &middot; Canto Moderno &middot; M° Raffaela Carfora
       </footer>
     </div>
   );

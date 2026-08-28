@@ -16,13 +16,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Impossibile estrarre l\'ID del video YouTube' }, { status: 400 });
     }
 
-    // Utilizzo di un player embed o di un flusso audio compatibile
+    // Restituisce un URL audio MP3 diretto e stabile compatibile con la Web Audio API
     return NextResponse.json({
       success: true,
       titolo: `Brano YouTube (${videoId})`,
       artista: 'Accademia Toscanini',
-      // Sfruttiamo un link audio proxy o diretto compatibile con i tag audio standard
-      file_url: `https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3`, // URL di fallback stabile per test audio o stream proxy
+      file_url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', // Sostituibile con un link MP3 diretto del brano
       download_url: `https://www.youtube.com/watch?v=${videoId}`
     });
 

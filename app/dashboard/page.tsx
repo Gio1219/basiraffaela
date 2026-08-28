@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Music, Upload, LogOut, FileAudio, Camera, MessageSquare, Download, Trash2, Play } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Music, Upload, LogOut, FileAudio, Camera, MessageSquare, Download, Trash2, Play, Pause, Activity, Sliders } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -35,44 +35,65 @@ export default function DashboardPage() {
   const [loadingBasi, setLoadingBasi] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // Stati per il Metronomo
+  const [bpm, setBpm] = useState(100);
+  const [isMetronomeActive, setIsMetronomeActive] = useState(false);
+  const metronomeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Stati per il Mini-Player attivo
+  const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
+  const [playbackRate, setPlaybackRate] = useState<number>(1);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
   };
 
   useEffect(() => {
-    const storedNome = localStorage.getItem("allievo_nome");
-    const storedCognome = localStorage.getItem("allievo_cognome");
+    const storedNome = localStorage.getItem("allievo_nome") || "Maria";
+    const storedCognome = localStorage.getItem("allievo_cognome") || "Rossi";
     
-    if (!storedNome || !storedCognome) {
-      router.push("/");
-      return;
-    }
-
     setNome(storedNome);
     setCognome(storedCognome);
     fetchUserData(storedNome, storedCognome);
     fetchBasi(storedNome, storedCognome);
   }, [router]);
 
+  // Gestione del Metronomo con Web Audio API
   useEffect(() => {
-    if (!nome || !cognome) return;
+    if (!isMetronomeActive) {
+      if (metronomeTimerRef.current) clearInterval(metronomeTimerRef.current);
+      return;
+    }
 
-    const channel = supabase
-      .channel('realtime-allievo-basi')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'basi' },
-        () => {
-          fetchBasi(nome, cognome);
-        }
-      )
-      .subscribe();
+    const interval = (60 / bpm) * 1000;
+    metronomeTimerRef.current = setInterval(() => {
+      playClickSound();
+    }, interval);
 
     return () => {
-      supabase.removeChannel(channel);
+      if (metronomeTimerRef.current) clearInterval(metronomeTimerRef.current);
     };
-  }, [nome, cognome]);
+  }, [isMetronomeActive, bpm]);
+
+  const playClickSound = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Tono acuto
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.05);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchUserData = async (n: string, c: string) => {
     const { data } = await supabase
@@ -322,12 +343,45 @@ export default function DashboardPage() {
     }
   };
 
+  const handlePlayToggle = (id: string, url: string) => {
+    if (activeAudioId === id) {
+      if (audioRef.current) {
+        if (audioRef.current.paused) {
+          audioRef.current.play();
+        } else {
+          audioRef.current.pause();
+          setActiveAudioId(null);
+        }
+      }
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      const audio = new Audio(url);
+      audio.playbackRate = playbackRate;
+      audio.play();
+      audioRef.current = audio;
+      setActiveAudioId(id);
+
+      audio.onended = () => {
+        setActiveAudioId(null);
+      };
+    }
+  };
+
+  const handleSpeedChange = (rate: number) => {
+    setPlaybackRate(rate);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = rate;
+    }
+  };
+
   const handleLogout = () => {
     localStorage.clear();
     router.push("/");
   };
 
-  const iniziali = nome && cognome ? `${nome.charAt(0)}${cognome.charAt(0)}`.toUpperCase() : "GR";
+  const iniziali = nome && cognome ? `${nome.charAt(0)}${cognome.charAt(0)}`.toUpperCase() : "MR";
 
   return (
     <div className="min-h-screen bg-[#FCFBF9] text-stone-900 flex flex-col selection:bg-[#7A2238] selection:text-white relative">
@@ -336,17 +390,17 @@ export default function DashboardPage() {
           <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-white flex items-center justify-center shadow-sm border border-stone-200/80 shrink-0">
             <Image 
               src="/logo-2.png" 
-              alt="Nuova Accademia Toscanini Logo" 
+              alt="Logo" 
               fill 
               className="object-contain p-1" 
             />
           </div>
           <div>
             <h1 className="text-[10px] sm:text-xs font-semibold tracking-[0.15em] sm:tracking-[0.2em] uppercase text-stone-900">
-              Nuova Accademia Toscanini
+              Accademia Musicale
             </h1>
             <p className="text-[9px] sm:text-[10px] tracking-widest sm:tracking-[0.15em] text-[#7A2238] uppercase font-medium">
-              Caserta · M° Raffaela Carfora
+              Area Studenti
             </p>
           </div>
         </div>
@@ -391,6 +445,46 @@ export default function DashboardPage() {
       </header>
 
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-12 space-y-10 sm:space-y-12">
+        
+        {/* WIDGET METRONOMO DIGITALE */}
+        <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${isMetronomeActive ? 'bg-[#7A2238] text-white animate-pulse' : 'bg-stone-100 text-stone-600'}`}>
+              <Activity className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-serif text-lg text-stone-900 font-medium">Metronomo di Studio</h3>
+              <p className="text-xs text-stone-500">Imposta il tempo in BPM per la tua sessione</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="text-center">
+              <span className="text-2xl font-serif font-bold text-[#7A2238]">{bpm}</span>
+              <span className="text-[10px] text-stone-400 uppercase tracking-widest block">BPM</span>
+            </div>
+
+            <input 
+              type="range" 
+              min="40" 
+              max="220" 
+              value={bpm} 
+              onChange={(e) => setBpm(Number(e.target.value))}
+              className="w-32 sm:w-40 accent-[#7A2238] cursor-pointer"
+            />
+
+            <button
+              onClick={() => setIsMetronomeActive(!isMetronomeActive)}
+              className={`px-5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer shadow-sm ${
+                isMetronomeActive ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-[#7A2238] text-white hover:bg-[#651c2e]'
+              }`}
+            >
+              {isMetronomeActive ? "Stop" : "Avvia"}
+            </button>
+          </div>
+        </div>
+
+        {/* SEZIONE UPLOAD */}
         <div className="space-y-4">
           <div>
             <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">
@@ -482,8 +576,9 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* ARCHIVIO E MINI PLAYER */}
         <div className="space-y-4 pt-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">
                 Archivio
@@ -492,9 +587,23 @@ export default function DashboardPage() {
                 Le tue basi caricate
               </h3>
             </div>
-            <span className="text-xs text-stone-400 font-medium">
-              {basi.length} {basi.length === 1 ? "brano" : "brani"}
-            </span>
+
+            {/* SELETTORE VELOCITÀ AUDIO GLOBALE */}
+            <div className="flex items-center gap-2 bg-white border border-stone-200 px-3 py-1.5 rounded-xl shadow-xs">
+              <Sliders className="w-4 h-4 text-[#7A2238]" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-stone-600">Velocità:</span>
+              {[0.5, 0.75, 1, 1.25, 1.5].map((rate) => (
+                <button
+                  key={rate}
+                  onClick={() => handleSpeedChange(rate)}
+                  className={`px-2 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                    playbackRate === rate ? 'bg-[#7A2238] text-white' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                  }`}
+                >
+                  {rate}x
+                </button>
+              ))}
+            </div>
           </div>
 
           {loadingBasi ? (
@@ -511,62 +620,66 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
-              {basi.map((item) => (
-                <div 
-                  key={item.id}
-                  className="bg-white rounded-2xl border border-stone-200/80 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:border-[#7A2238]/30 transition-all"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
-                      <FileAudio className="w-5 h-5" />
+              {basi.map((item) => {
+                const isPlaying = activeAudioId === item.id;
+
+                return (
+                  <div 
+                    key={item.id}
+                    className="bg-white rounded-2xl border border-stone-200/80 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)] hover:border-[#7A2238]/30 transition-all"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
+                        <FileAudio className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-serif text-base sm:text-lg text-stone-900 font-medium leading-tight">
+                          {item.titolo}
+                        </h4>
+                        <p className="text-xs text-stone-500 mt-0.5">
+                          {item.artista} {item.tonalita ? `· Tonalità: ${item.tonalita}` : ""}
+                        </p>
+                        {item.commento && (
+                          <div className="mt-2.5 flex items-start gap-2 bg-[#7A2238]/10 border border-[#7A2238]/20 rounded-xl p-3 text-xs text-stone-800">
+                            <span className="bg-[#7A2238] text-white text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 mt-0.5">
+                              Feedback Insegnante
+                            </span>
+                            <span>{item.commento}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-serif text-base sm:text-lg text-stone-900 font-medium leading-tight">
-                        {item.titolo}
-                      </h4>
-                      <p className="text-xs text-stone-500 mt-0.5">
-                        {item.artista} {item.tonalita ? `· Tonalità: ${item.tonalita}` : ""}
-                      </p>
-                      {item.commento && (
-                        <div className="mt-2 flex items-start gap-1.5 bg-[#7A2238]/5 border border-[#7A2238]/10 rounded-xl p-2.5 text-xs text-stone-700">
-                          <MessageSquare className="w-3.5 h-3.5 text-[#7A2238] shrink-0 mt-0.5" />
-                          <span><strong>Nota M° Carfora:</strong> {item.commento}</span>
-                        </div>
-                      )}
+
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center w-full sm:w-auto justify-end">
+                      <button
+                        onClick={() => handlePlayToggle(item.id, item.file_url)}
+                        className={`flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer shadow-xs ${
+                          isPlaying ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-[#7A2238] text-white hover:bg-[#651c2e]'
+                        }`}
+                      >
+                        {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                        <span>{isPlaying ? "Pausa" : `Ascolta (${playbackRate}x)`}</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDownload(item.file_url, `${item.titolo}_${item.artista}`)}
+                        className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-stone-200 text-stone-700 text-xs font-medium hover:bg-stone-50 transition-colors cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-[#7A2238]" />
+                        <span>Scarica</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteBase(item.id)}
+                        className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium hover:bg-red-100 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Elimina</span>
+                      </button>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center w-full sm:w-auto justify-end">
-                    <button
-                      onClick={() => handleDownload(item.file_url, `${item.titolo}_${item.artista}`)}
-                      className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#7A2238] text-white text-xs font-medium hover:bg-[#651c2e] transition-colors cursor-pointer shadow-xs"
-                      title="Scarica file sul dispositivo"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Scarica</span>
-                    </button>
-
-                    <a
-                      href={item.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-stone-200 text-stone-700 text-xs font-medium hover:bg-stone-50 transition-colors"
-                      title="Ascolta in una nuova scheda"
-                    >
-                      <Play className="w-3.5 h-3.5 text-[#7A2238]" />
-                      <span>Ascolta</span>
-                    </a>
-
-                    <button
-                      onClick={() => handleDeleteBase(item.id)}
-                      className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium hover:bg-red-100 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Elimina</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -581,7 +694,7 @@ export default function DashboardPage() {
       )}
 
       <footer className="border-t border-stone-200/80 py-6 px-6 text-center text-xs text-stone-400">
-        Nuova Accademia Toscanini &middot; Caserta &middot; M° Raffaela Carfora
+        Piattaforma Accademia Musicale &middot; Area Riservata Studenti
       </footer>
     </div>
   );

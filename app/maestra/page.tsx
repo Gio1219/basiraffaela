@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Mic, Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, Sliders } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -43,27 +43,10 @@ interface LezioneOrario {
 const GIORNI_SETTIMANA = ["Lunedì", "Mercoledì", "Giovedì", "Venerdì"];
 
 const ORARIO_INIZIALE: Omit<LezioneOrario, "id">[] = [
-  { giorno: "Lunedì", ora: "16:30", nome_allievo: "Marianna Izzo", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Lunedì", ora: "17:15", nome_allievo: "Carla Mingione", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Lunedì", ora: "18:00", nome_allievo: "Nicole Borriello", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Lunedì", ora: "18:45", nome_allievo: "Manuel Ejiba", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Lunedì", ora: "19:30", nome_allievo: "Gospel", corso: null, tipo_modifica: "normale" },
-  { giorno: "Lunedì", ora: "20:30", nome_allievo: "Maria Iengo", corso: "Professional", tipo_modifica: "normale" },
-  { giorno: "Mercoledì", ora: "17:00", nome_allievo: "Maria Iengo", corso: "Professional", tipo_modifica: "normale" },
-  { giorno: "Mercoledì", ora: "18:00", nome_allievo: "Martina Fucci", corso: "Professional", tipo_modifica: "normale" },
-  { giorno: "Mercoledì", ora: "19:00", nome_allievo: "Martina Carfora", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Mercoledì", ora: "19:45", nome_allievo: "Giorgia Esposito", corso: "Professional", tipo_modifica: "normale" },
-  { giorno: "Giovedì", ora: "16:30", nome_allievo: "Sophie Cirillo", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Giovedì", ora: "17:15", nome_allievo: "Stefania Morgillo", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Giovedì", ora: "18:00", nome_allievo: "Roberta Ruggiero", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Giovedì", ora: "18:45", nome_allievo: "Francesca Cristillo", corso: "Professional", tipo_modifica: "normale" },
-  { giorno: "Giovedì", ora: "19:45", nome_allievo: "Melissa Fusco", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Giovedì", ora: "20:30", nome_allievo: "Aldo Morgillo", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Venerdì", ora: "16:30", nome_allievo: "Tonia Cepparulo", corso: "Professional", tipo_modifica: "normale" },
-  { giorno: "Venerdì", ora: "17:30", nome_allievo: "Maya Morgillo", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Venerdì", ora: "18:15", nome_allievo: "Nicole Garofalo", corso: "Avanzato", tipo_modifica: "normale" },
-  { giorno: "Venerdì", ora: "19:00", nome_allievo: "Giovanni Russo", corso: "Professional", tipo_modifica: "normale" },
-  { giorno: "Venerdì", ora: "20:00", nome_allievo: "Rosa Lo Sapio", corso: "Avanzato", tipo_modifica: "normale" },
+  { giorno: "Lunedì", ora: "16:30", nome_allievo: "Maria Rossi", corso: "Avanzato", tipo_modifica: "normale" },
+  { giorno: "Lunedì", ora: "17:15", nome_allievo: "Luca Bianchi", corso: "Avanzato", tipo_modifica: "normale" },
+  { giorno: "Mercoledì", ora: "17:00", nome_allievo: "Maria Rossi", corso: "Professional", tipo_modifica: "normale" },
+  { giorno: "Mercoledì", ora: "18:00", nome_allievo: "Giulia Verdi", corso: "Professional", tipo_modifica: "normale" },
 ];
 
 export default function MaestraDashboardPage() {
@@ -107,14 +90,33 @@ export default function MaestraDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // Mini-Player audio con velocità per la Maestra
+  const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
+  const [playbackRate, setPlaybackRate] = useState<number>(1);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
   };
 
   useEffect(() => {
+    // Controllo di sicurezza: verifica che sia loggata l'insegnante autorizzata
+    const storedNome = localStorage.getItem("allievo_nome");
+    const storedCognome = localStorage.getItem("allievo_cognome");
+    
+    if (
+      !storedNome || 
+      !storedCognome || 
+      storedNome.toLowerCase().trim() !== "raffaela" || 
+      storedCognome.toLowerCase().trim() !== "carfora"
+    ) {
+      router.push("/");
+      return;
+    }
+
     fetchData();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     const channelBasi = supabase
@@ -163,7 +165,7 @@ export default function MaestraDashboardPage() {
       const uniqueOrario = Array.from(
         new Map(orarioData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values()
       );
-      setOrarioList(uniqueOrario);
+      setOrarioList(uniqueOrario as LezioneOrario[]);
     }
   };
 
@@ -187,7 +189,7 @@ export default function MaestraDashboardPage() {
         const uniqueOrario = Array.from(
           new Map(orarioData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values()
         );
-        setOrarioList(uniqueOrario);
+        setOrarioList(uniqueOrario as LezioneOrario[]);
       } else {
         const { data: insertedData, error: insertError } = await supabase
           .from("orario")
@@ -198,7 +200,7 @@ export default function MaestraDashboardPage() {
           const uniqueOrario = Array.from(
             new Map(insertedData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values()
           );
-          setOrarioList(uniqueOrario);
+          setOrarioList(uniqueOrario as LezioneOrario[]);
         } else {
           setOrarioList(
             ORARIO_INIZIALE.map((item, index) => ({
@@ -481,6 +483,39 @@ export default function MaestraDashboardPage() {
     }
   };
 
+  const handlePlayToggle = (id: string, url: string) => {
+    if (activeAudioId === id) {
+      if (audioRef.current) {
+        if (audioRef.current.paused) {
+          audioRef.current.play();
+        } else {
+          audioRef.current.pause();
+          setActiveAudioId(null);
+        }
+      }
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      const audio = new Audio(url);
+      audio.playbackRate = playbackRate;
+      audio.play();
+      audioRef.current = audio;
+      setActiveAudioId(id);
+
+      audio.onended = () => {
+        setActiveAudioId(null);
+      };
+    }
+  };
+
+  const handleSpeedChange = (rate: number) => {
+    setPlaybackRate(rate);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = rate;
+    }
+  };
+
   const handleSaveComment = async (id: string) => {
     const nuovoCommento = commentiModificati[id] || "";
     const { error } = await supabase
@@ -620,20 +655,20 @@ export default function MaestraDashboardPage() {
     <div className="min-h-screen bg-[#FCFBF9] text-stone-900 flex flex-col selection:bg-[#7A2238] selection:text-white relative">
       <header className="border-b border-stone-200/80 bg-[#FCFBF9]/80 backdrop-blur-md sticky top-0 z-30 px-6 lg:px-16 py-5 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-black flex items-center justify-center shadow-sm border border-stone-200">
+          <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-white flex items-center justify-center shadow-sm border border-stone-200">
             <Image 
               src="/logo-2.png" 
-              alt="Nuova Accademia Toscanini Logo" 
+              alt="Logo" 
               fill 
               className="object-contain p-1" 
             />
           </div>
           <div>
             <h1 className="text-xs font-semibold tracking-[0.2em] uppercase text-stone-900">
-              Nuova Accademia Toscanini
+              Accademia Musicale
             </h1>
             <p className="text-[10px] tracking-[0.15em] text-[#7A2238] uppercase font-medium">
-              Caserta · M° Raffaela Carfora
+              Area Docente · M° Raffaela Carfora
             </p>
           </div>
         </div>
@@ -663,11 +698,11 @@ export default function MaestraDashboardPage() {
           <div className="flex items-center gap-3 bg-white border border-stone-200/80 rounded-full py-1.5 pl-3 pr-4 shadow-[0_2px_4px_rgba(0,0,0,0.02)]">
             <label className="relative w-9 h-9 rounded-full overflow-hidden bg-stone-300 text-stone-800 font-semibold text-xs flex items-center justify-center cursor-pointer group shadow-inner">
               {avatarUrl ? (
-                <Image src={avatarUrl} alt="Raffaela Carfora" fill className="object-cover" />
+                <Image src={avatarUrl} alt="Profilo" fill className="object-cover" />
               ) : (
                 <Image 
                   src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTZ8MHwxfHNlYXJjaHwxfHxwb3J0cmFpdHxlbnwwfHx8fDE3ODc4MzA0Mjd8MA&ixlib=rb-4.1.0&q=85" 
-                  alt="Raffaela Carfora" 
+                  alt="Profilo" 
                   fill 
                   className="object-cover" 
                 />
@@ -775,7 +810,7 @@ export default function MaestraDashboardPage() {
                     type="text"
                     value={nuovoAllievoNome}
                     onChange={(e) => setNuovoAllievoNome(e.target.value)}
-                    placeholder="es. Gospel"
+                    placeholder="es. Maria Rossi"
                     required
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
                   />
@@ -1176,9 +1211,27 @@ export default function MaestraDashboardPage() {
             </div>
 
             <div className="space-y-4 pt-2">
-              <h4 className="text-xs font-bold tracking-widest text-stone-500 uppercase">
-                Basi caricate da {selectedAllievo.nome}
-              </h4>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <h4 className="text-xs font-bold tracking-widest text-stone-500 uppercase">
+                  Basi caricate da {selectedAllievo.nome}
+                </h4>
+
+                <div className="flex items-center gap-2 bg-white border border-stone-200 px-3 py-1 rounded-xl shadow-xs">
+                  <Sliders className="w-3.5 h-3.5 text-[#7A2238]" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-600">Velocità:</span>
+                  {[0.5, 0.75, 1, 1.25, 1.5].map((rate) => (
+                    <button
+                      key={rate}
+                      onClick={() => handleSpeedChange(rate)}
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-medium cursor-pointer transition-all ${
+                        playbackRate === rate ? 'bg-[#7A2238] text-white' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                      }`}
+                    >
+                      {rate}x
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {(() => {
                 const basiAllievo = basi.filter(
@@ -1198,86 +1251,89 @@ export default function MaestraDashboardPage() {
 
                 return (
                   <div className="grid grid-cols-1 gap-4">
-                    {basiAllievo.map((item) => (
-                      <div
-                        key={item.id}
-                        className="bg-white rounded-2xl border border-stone-200/80 p-5 space-y-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)]"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
-                              <FileAudio className="w-5 h-5" />
+                    {basiAllievo.map((item) => {
+                      const isPlaying = activeAudioId === item.id;
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="bg-white rounded-2xl border border-stone-200/80 p-5 space-y-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)]"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
+                                <FileAudio className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <h4 className="font-serif text-lg text-stone-900 font-medium leading-snug">
+                                  {item.titolo} <span className="font-sans text-xs text-stone-500">di {item.artista}</span>
+                                </h4>
+                                {item.tonalita && (
+                                  <p className="text-xs text-stone-500 mt-0.5">Tonalità: {item.tonalita}</p>
+                                )}
+                              </div>
                             </div>
-                            <div>
-                              <h4 className="font-serif text-lg text-stone-900 font-medium leading-snug">
-                                {item.titolo} <span className="font-sans text-xs text-stone-500">di {item.artista}</span>
-                              </h4>
-                              {item.tonalita && (
-                                <p className="text-xs text-stone-500 mt-0.5">Tonalità: {item.tonalita}</p>
-                              )}
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handlePlayToggle(item.id, item.file_url)}
+                                className={`flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer shadow-xs ${
+                                  isPlaying ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-[#7A2238] text-white hover:bg-[#651c2e]'
+                                }`}
+                              >
+                                {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                                <span>{isPlaying ? "Pausa" : `Ascolta (${playbackRate}x)`}</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleDownload(item.file_url, `${item.titolo}_${item.artista}`)}
+                                className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#7A2238] text-white text-xs font-medium hover:bg-[#651c2e] transition-colors cursor-pointer shadow-xs"
+                                title="Scarica file sul dispositivo"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>Scarica</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteBase(item.id)}
+                                className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium hover:bg-red-100 transition-colors cursor-pointer"
+                                title="Elimina base"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Elimina</span>
+                              </button>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleDownload(item.file_url, `${item.titolo}_${item.artista}`)}
-                              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#7A2238] text-white text-xs font-medium hover:bg-[#651c2e] transition-colors cursor-pointer shadow-xs"
-                              title="Scarica file sul dispositivo"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              <span>Scarica</span>
-                            </button>
-
-                            <a
-                              href={item.file_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-stone-200 text-stone-700 text-xs font-medium hover:bg-stone-50 transition-colors"
-                              title="Ascolta in una nuova scheda"
-                            >
-                              <Play className="w-3.5 h-3.5 text-[#7A2238]" />
-                              <span>Ascolta</span>
-                            </a>
-
-                            <button
-                              onClick={() => handleDeleteBase(item.id)}
-                              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium hover:bg-red-100 transition-colors cursor-pointer"
-                              title="Elimina base"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Elimina</span>
-                            </button>
+                          <div className="pt-3 border-t border-stone-100 space-y-2">
+                            <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase flex items-center gap-1.5">
+                              <MessageSquare className="w-3 h-3 text-[#7A2238]" /> Commento / Note per l'allievo
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={commentiModificati[item.id] !== undefined ? commentiModificati[item.id] : (item.commento || "")}
+                                onChange={(e) =>
+                                  setCommentiModificati({
+                                    ...commentiModificati,
+                                    [item.id]: e.target.value,
+                                  })
+                                }
+                                placeholder="Scrivi un commento di miglioramento..."
+                                className="flex-1 px-3 py-2 rounded-xl border border-stone-200 bg-stone-50 text-stone-900 text-xs focus:outline-none focus:bg-white transition-all"
+                              />
+                              <button
+                                onClick={() => handleSaveComment(item.id)}
+                                className="flex items-center gap-1 px-4 py-2 bg-[#7A2238] hover:bg-[#651c2e] text-white text-xs font-medium rounded-xl transition-all cursor-pointer shadow-xs"
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                                <span>Salva Nota</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
-
-                        <div className="pt-3 border-t border-stone-100 space-y-2">
-                          <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase flex items-center gap-1.5">
-                            <MessageSquare className="w-3 h-3 text-[#7A2238]" /> Commento / Note per l'allievo
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={commentiModificati[item.id] !== undefined ? commentiModificati[item.id] : (item.commento || "")}
-                              onChange={(e) =>
-                                setCommentiModificati({
-                                  ...commentiModificati,
-                                  [item.id]: e.target.value,
-                                })
-                              }
-                              placeholder="Scrivi un commento di miglioramento..."
-                              className="flex-1 px-3 py-2 rounded-xl border border-stone-200 bg-stone-50 text-stone-900 text-xs focus:outline-none focus:bg-white transition-all"
-                            />
-                            <button
-                              onClick={() => handleSaveComment(item.id)}
-                              className="flex items-center gap-1 px-4 py-2 bg-[#7A2238] hover:bg-[#651c2e] text-white text-xs font-medium rounded-xl transition-all cursor-pointer shadow-xs"
-                            >
-                              <Save className="w-3.5 h-3.5" />
-                              <span>Salva Nota</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 );
               })()}
@@ -1385,7 +1441,7 @@ export default function MaestraDashboardPage() {
       )}
 
       <footer className="border-t border-stone-200/80 py-6 px-6 text-center text-xs text-stone-400">
-        Nuova Accademia Toscanini &middot; Caserta &middot; M° Raffaela Carfora
+        Piattaforma Accademia Musicale &middot; Area Docente
       </footer>
     </div>
   );

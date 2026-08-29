@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Disc, Table, ShieldCheck, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Disc, Table, ShieldCheck } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -114,6 +114,11 @@ export default function MaestraDashboardPage() {
   const [warmupFile, setWarmupFile] = useState<File | null>(null);
   const [isUploadingWarmup, setIsUploadingWarmup] = useState(false);
 
+  // Warmup specifico per singolo allievo
+  const [allievoWarmupTitolo, setAllievoWarmupTitolo] = useState("");
+  const [allievoWarmupFile, setAllievoWarmupFile] = useState<File | null>(null);
+  const [isUploadingAllievoWarmup, setIsUploadingAllievoWarmup] = useState(false);
+
   const [titoloBase, setTitoloBase] = useState("");
   const [artistaBase, setArtistaBase] = useState("");
   const [tonalitaBase, setTonalitaBase] = useState("Standard (0)");
@@ -217,6 +222,7 @@ export default function MaestraDashboardPage() {
         artista: warmupArtista.trim() || "M° Raffaela Carfora",
         tonalita: warmupTonalita.trim() || null,
         corso_destinazione: warmupCorsoDestinazione,
+        allievo_nome: null,
         file_url: publicUrlData.publicUrl,
       };
 
@@ -235,6 +241,46 @@ export default function MaestraDashboardPage() {
       showToast("Errore caricamento warm-up: " + err.message, "error");
     } finally {
       setIsUploadingWarmup(false);
+    }
+  };
+
+  const handleUploadAllievoWarmup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!allievoWarmupFile || !allievoWarmupTitolo.trim() || !selectedAllievo) {
+      showToast("Inserisci titolo e file audio per l'allievo.", "error");
+      return;
+    }
+
+    setIsUploadingAllievoWarmup(true);
+    try {
+      const filePath = `warmup/allievi/${selectedAllievo.cognome}_${Date.now()}.${allievoWarmupFile.name.split(".").pop()}`;
+      const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, allievoWarmupFile, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage.from("basi").getPublicUrl(filePath);
+
+      const newWarmup = {
+        titolo: allievoWarmupTitolo.trim(),
+        artista: "M° Raffaela Carfora",
+        tonalita: null,
+        corso_destinazione: null,
+        allievo_nome: selectedAllievo.nome,
+        file_url: publicUrlData.publicUrl,
+      };
+
+      const { data, error } = await supabase.from("warmup").insert([newWarmup]).select();
+      if (error) throw error;
+
+      if (data) {
+        setWarmupBasi([data[0], ...warmupBasi]);
+        setAllievoWarmupTitolo("");
+        setAllievoWarmupFile(null);
+        showToast(`Warm-up assegnato a ${selectedAllievo.nome} con successo!`);
+      }
+    } catch (err: any) {
+      showToast("Errore caricamento warm-up allievo: " + err.message, "error");
+    } finally {
+      setIsUploadingAllievoWarmup(false);
     }
   };
 
@@ -815,7 +861,7 @@ export default function MaestraDashboardPage() {
                             <div className="flex items-center gap-2">
                               <h4 className="font-serif text-base text-stone-900 font-medium">{item.titolo}</h4>
                               <span className="px-2.5 py-0.5 rounded-full bg-stone-100 text-[#7A2238] text-[9px] font-bold uppercase tracking-wider border border-stone-200">
-                                {item.corso_destinazione || "Tutti"}
+                                {item.allievo_nome ? `Assegnato a: ${item.allievo_nome}` : (item.corso_destinazione || "Tutti")}
                               </span>
                             </div>
                             <p className="text-xs text-stone-500 mt-0.5">{item.artista} {item.tonalita ? `· ${item.tonalita}` : ''}</p>
@@ -880,7 +926,11 @@ export default function MaestraDashboardPage() {
             </div>
 
             {GIORNI_SETTIMANA.map((giorno) => {
-              const lezioniGiorno = orarioList.filter(l => l.giorno === giorno);
+              const lezioniGiorno = orarioList.filter(l => 
+                l.giorno === giorno && 
+                l.corso?.toLowerCase() !== 'gospel' && 
+                !l.nome_allievo.toLowerCase().includes('gospel')
+              );
               if (lezioniGiorno.length === 0) return null;
 
               return (
@@ -907,7 +957,6 @@ export default function MaestraDashboardPage() {
                         {lezioniGiorno.map((lezione) => {
                           const allievoKey = lezione.nome_allievo;
 
-                          // Calcolo automatico statistiche mensili per allievo
                           let countP = 0;
                           let countA = 0;
                           let countR = 0;
@@ -975,7 +1024,6 @@ export default function MaestraDashboardPage() {
                                 );
                               })}
 
-                              {/* Colonna Statistiche / Riepilogo Mensile */}
                               <td className="p-3 border-l border-stone-200 text-center">
                                 <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold">
                                   <span className="px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200" title="Presenti">{countP}P</span>
@@ -1272,6 +1320,36 @@ export default function MaestraDashboardPage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* SEZIONE ASSEGNAZIONE WARM-UP SPECIFICO A QUESTO ALLIEVO */}
+            <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-sm space-y-4">
+              <h4 className="text-xs font-bold tracking-widest text-[#7A2238] uppercase flex items-center gap-2">
+                <Music className="w-4 h-4" /> Assegna Warm-up Specifico a {selectedAllievo.nome}
+              </h4>
+              <form onSubmit={handleUploadAllievoWarmup} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Titolo Esercizio</label>
+                  <input
+                    type="text" value={allievoWarmupTitolo} onChange={(e) => setAllievoWarmupTitolo(e.target.value)}
+                    placeholder="es. Riscaldamento Personalizzato" required
+                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">File Audio (MP3/WAV)</label>
+                  <input
+                    type="file" accept="audio/*" onChange={(e) => setAllievoWarmupFile(e.target.files?.[0] || null)} required
+                    className="w-full text-xs text-stone-500 file:mr-2 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#7A2238]/10 file:text-[#7A2238] cursor-pointer"
+                  />
+                </div>
+                <button
+                  type="submit" disabled={isUploadingAllievoWarmup}
+                  className="py-3 px-6 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white font-medium text-xs transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  {isUploadingAllievoWarmup ? "Caricamento..." : "Assegna Warm-up all'allievo"}
+                </button>
+              </form>
             </div>
 
             <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-sm space-y-4">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Sliders, Maximize2, Minimize2, Disc, Table } from "lucide-react";
+import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Disc, Table, ShieldCheck, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -28,6 +28,17 @@ interface BaseMusicale {
   tonalita?: string | null;
   file_url: string;
   commento?: string | null;
+  created_at: string;
+}
+
+interface WarmupItem {
+  id: string;
+  titolo: string;
+  artista?: string | null;
+  tonalita?: string | null;
+  file_url: string;
+  corso_destinazione?: string | null;
+  allievo_nome?: string | null;
   created_at: string;
 }
 
@@ -63,7 +74,7 @@ export default function MaestraDashboardPage() {
   const [activeTab, setActiveTab] = useState<"orario" | "registro" | "allievi" | "warmup">("orario");
   const [allievi, setAllievi] = useState<Allievo[]>([]);
   const [basi, setBasi] = useState<BaseMusicale[]>([]);
-  const [warmupBasi, setWarmupBasi] = useState<BaseMusicale[]>([]);
+  const [warmupBasi, setWarmupBasi] = useState<WarmupItem[]>([]);
   const [orarioList, setOrarioList] = useState<LezioneOrario[]>([]);
   const [presenzeMensili, setPresenzeMensili] = useState<PresenzaSettimana[]>([]);
   const [selectedMese, setSelectedMese] = useState("Settembre");
@@ -91,16 +102,15 @@ export default function MaestraDashboardPage() {
   const [nuovoCorso, setNuovoCorso] = useState("");
   const [nuovoTipoModifica, setNuovoTipoModifica] = useState("normale");
 
-  // YouTube States
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [isConvertingYoutube, setIsConvertingYoutube] = useState(false);
   const [ytTitolo, setYtTitolo] = useState("");
   const [ytArtista, setYtArtista] = useState("");
 
-  // Warmup form states
   const [warmupTitolo, setWarmupTitolo] = useState("");
   const [warmupArtista, setWarmupArtista] = useState("M° Raffaela Carfora");
   const [warmupTonalita, setWarmupTonalita] = useState("");
+  const [warmupCorsoDestinazione, setWarmupCorsoDestinazione] = useState("Tutti");
   const [warmupFile, setWarmupFile] = useState<File | null>(null);
   const [isUploadingWarmup, setIsUploadingWarmup] = useState(false);
 
@@ -115,7 +125,6 @@ export default function MaestraDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Player Audio States
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -207,6 +216,7 @@ export default function MaestraDashboardPage() {
         titolo: warmupTitolo.trim(),
         artista: warmupArtista.trim() || "M° Raffaela Carfora",
         tonalita: warmupTonalita.trim() || null,
+        corso_destinazione: warmupCorsoDestinazione,
         file_url: publicUrlData.publicUrl,
       };
 
@@ -217,6 +227,7 @@ export default function MaestraDashboardPage() {
         setWarmupBasi([data[0], ...warmupBasi]);
         setWarmupTitolo("");
         setWarmupTonalita("");
+        setWarmupCorsoDestinazione("Tutti");
         setWarmupFile(null);
         showToast("Esercizio di riscaldamento caricato con successo!");
       }
@@ -297,6 +308,25 @@ export default function MaestraDashboardPage() {
         setPresenzeMensili([...presenzeMensili, { id: Math.random().toString(), ...newRecord }]);
       }
     }
+
+    try {
+      const WEB_APP_URL = "INCOLLA_QUI_IL_TUO_URL_DI_APPS_SCRIPT"; 
+      if (WEB_APP_URL && WEB_APP_URL !== "INCOLLA_QUI_IL_TUO_URL_DI_APPS_SCRIPT") {
+        await fetch(WEB_APP_URL, {
+          method: "POST",
+          mode: "no-cors",
+          body: JSON.stringify({
+            allievo: allievoNomeKey,
+            mese: selectedMese,
+            settimana: settimana,
+            stato: stato
+          })
+        });
+      }
+    } catch (err) {
+      console.error("Errore sync foglio:", err);
+    }
+
     showToast(`Registrato [${stato}] per ${allievoNomeKey} (Settimana ${settimana})`);
   };
 
@@ -656,7 +686,6 @@ export default function MaestraDashboardPage() {
 
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-12 space-y-10 pb-32">
         
-        {/* Mobile Navbar */}
         <div className="flex md:hidden items-center gap-1 bg-stone-200/60 p-1 rounded-2xl w-full overflow-x-auto">
           <button
             onClick={() => { setActiveTab("orario"); setSelectedAllievo(null); }}
@@ -696,21 +725,26 @@ export default function MaestraDashboardPage() {
           </button>
         </div>
 
-        {/* TAB WARMUP */}
         {activeTab === "warmup" && !selectedAllievo && (
           <div className="space-y-8">
-            <div>
-              <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Gestione Didattica</span>
-              <h2 className="text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
-                Esercizi di <span className="italic font-light">Riscaldamento Vocale</span>
-              </h2>
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+              <div>
+                <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Gestione Didattica</span>
+                <h2 className="text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
+                  Esercizi di <span className="italic font-light">Riscaldamento Vocale</span>
+                </h2>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-stone-500 bg-stone-100 px-3 py-1.5 rounded-xl border border-stone-200">
+                <ShieldCheck className="w-4 h-4 text-[#7A2238]" />
+                <span>© 2026 M° Raffaela Carfora (Streaming protetto - No Download)</span>
+              </div>
             </div>
 
             <div className="bg-white rounded-3xl border border-stone-200/80 p-6 sm:p-8 shadow-sm space-y-4">
               <h3 className="text-xs font-bold tracking-widest text-[#7A2238] uppercase flex items-center gap-2">
-                <Upload className="w-4 h-4" /> Carica Nuovo Esercizio Warm-up
+                <Upload className="w-4 h-4" /> Carica Nuovo Esercizio Warm-up & Filtra Corso
               </h3>
-              <form onSubmit={handleUploadWarmup} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+              <form onSubmit={handleUploadWarmup} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Titolo Esercizio</label>
                   <input
@@ -721,12 +755,26 @@ export default function MaestraDashboardPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Tonalità (Opzionale)</label>
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Tonalità</label>
                   <input
                     type="text" value={warmupTonalita} onChange={(e) => setWarmupTonalita(e.target.value)}
                     placeholder="es. C Major"
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Corso di Destinazione</label>
+                  <select
+                    value={warmupCorsoDestinazione} onChange={(e) => setWarmupCorsoDestinazione(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs font-semibold focus:outline-none"
+                  >
+                    <option value="Tutti">Per Tutti</option>
+                    <option value="Base">Solo per Corso Base</option>
+                    <option value="Avanzato">Solo per Corso Avanzato</option>
+                    <option value="Professional">Solo per Pro</option>
+                    <option value="Avanzato e Pro">Avanzato e Pro</option>
+                  </select>
                 </div>
 
                 <div className="space-y-1">
@@ -747,7 +795,7 @@ export default function MaestraDashboardPage() {
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-xs font-bold tracking-widest text-stone-500 uppercase">Esercizi Attivi per gli Allievi ({warmupBasi.length})</h3>
+              <h3 className="text-xs font-bold tracking-widest text-stone-500 uppercase">Esercizi Attivi ({warmupBasi.length})</h3>
               {warmupBasi.length === 0 ? (
                 <div className="bg-white rounded-3xl border border-stone-200/80 p-12 text-center space-y-3 shadow-sm">
                   <Music className="w-8 h-8 text-stone-300 mx-auto" />
@@ -758,14 +806,19 @@ export default function MaestraDashboardPage() {
                   {warmupBasi.map((item) => {
                     const isThisActive = activeAudioId === item.id;
                     return (
-                      <div key={item.id} className="bg-white rounded-2xl border border-stone-200/80 p-5 flex items-center justify-between gap-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
+                      <div key={item.id} className="bg-white rounded-2xl border border-stone-200/80 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
                             <FileAudio className="w-5 h-5" />
                           </div>
                           <div>
-                            <h4 className="font-serif text-base text-stone-900 font-medium">{item.titolo}</h4>
-                            <p className="text-xs text-stone-500">{item.artista} {item.tonalita ? `· ${item.tonalita}` : ''}</p>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-serif text-base text-stone-900 font-medium">{item.titolo}</h4>
+                              <span className="px-2.5 py-0.5 rounded-full bg-stone-100 text-[#7A2238] text-[9px] font-bold uppercase tracking-wider border border-stone-200">
+                                {item.corso_destinazione || "Tutti"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-stone-500 mt-0.5">{item.artista} {item.tonalita ? `· ${item.tonalita}` : ''}</p>
                           </div>
                         </div>
 
@@ -778,13 +831,6 @@ export default function MaestraDashboardPage() {
                           >
                             {isThisActive && isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
                             <span>{isThisActive && isPlaying ? "Pausa" : "Ascolta"}</span>
-                          </button>
-                          <button
-                            onClick={() => handleDownload(item.file_url, `${item.titolo}_warmup`)}
-                            className="p-2.5 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-50 cursor-pointer"
-                            title="Scarica"
-                          >
-                            <Download className="w-4 h-4 text-[#7A2238]" />
                           </button>
                           <button
                             onClick={() => handleDeleteWarmup(item.id)}
@@ -803,14 +849,13 @@ export default function MaestraDashboardPage() {
           </div>
         )}
 
-        {/* REGISTRO PER GIORNATA */}
         {activeTab === "registro" && !selectedAllievo && (
           <div className="space-y-8">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
               <div>
-                <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Registro Presenze per Giornata</span>
+                <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Registro Presenze & Statistiche</span>
                 <h2 className="text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
-                  Tabella <span className="italic font-light">ordinata per giorno di lezione</span>
+                  Tabella <span className="italic font-light">con calcolo presenze mensili</span>
                 </h2>
               </div>
 
@@ -854,12 +899,24 @@ export default function MaestraDashboardPage() {
                           <th className="p-4 text-center font-bold tracking-widest border-l border-white/20">Settimana 1</th>
                           <th className="p-4 text-center font-bold tracking-widest border-l border-white/20">Settimana 2</th>
                           <th className="p-4 text-center font-bold tracking-widest border-l border-white/20">Settimana 3</th>
-                          <th className="p-4 text-center font-bold tracking-widest rounded-tr-2xl border-l border-white/20">Settimana 4</th>
+                          <th className="p-4 text-center font-bold tracking-widest border-l border-white/20">Settimana 4</th>
+                          <th className="p-4 text-center font-bold tracking-widest rounded-tr-2xl border-l border-white/20">Riepilogo Mese</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-stone-200">
                         {lezioniGiorno.map((lezione) => {
                           const allievoKey = lezione.nome_allievo;
+
+                          // Calcolo automatico statistiche mensili per allievo
+                          let countP = 0;
+                          let countA = 0;
+                          let countR = 0;
+                          [1, 2, 3, 4].forEach(sNum => {
+                            const rec = presenzeMensili.find(p => p.allievo_nome.toLowerCase() === allievoKey.toLowerCase() && p.mese === selectedMese && p.settimana === sNum);
+                            if (rec?.stato === 'P') countP++;
+                            if (rec?.stato === 'A') countA++;
+                            if (rec?.stato === 'R') countR++;
+                          });
 
                           return (
                             <tr key={lezione.id} className="hover:bg-stone-50 transition-colors">
@@ -872,7 +929,9 @@ export default function MaestraDashboardPage() {
                                     <p className="font-serif font-medium text-stone-900 flex items-center gap-1.5">
                                       <Clock className="w-3 h-3 text-[#7A2238]" /> {lezione.ora} - {allievoKey}
                                     </p>
-                                    <span className="text-[9px] uppercase tracking-wider text-stone-500 font-bold">{lezione.corso || "Corso Standard"}</span>
+                                    <span className="text-[9px] uppercase tracking-wider text-[#7A2238] font-bold bg-[#7A2238]/10 px-2 py-0.5 rounded-md mt-0.5 inline-block">
+                                      {lezione.corso || "Corso Standard"}
+                                    </span>
                                   </div>
                                 </div>
                               </td>
@@ -915,6 +974,15 @@ export default function MaestraDashboardPage() {
                                   </td>
                                 );
                               })}
+
+                              {/* Colonna Statistiche / Riepilogo Mensile */}
+                              <td className="p-3 border-l border-stone-200 text-center">
+                                <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold">
+                                  <span className="px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200" title="Presenti">{countP}P</span>
+                                  <span className="px-2 py-1 rounded-md bg-red-50 text-red-700 border border-red-200" title="Assenti">{countA}A</span>
+                                  <span className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200" title="Recuperi">{countR}R</span>
+                                </div>
+                              </td>
                             </tr>
                           );
                         })}
@@ -927,7 +995,6 @@ export default function MaestraDashboardPage() {
           </div>
         )}
 
-        {/* ORARIO LEZIONI */}
         {activeTab === "orario" && !selectedAllievo && (
           <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -1046,7 +1113,6 @@ export default function MaestraDashboardPage() {
           </div>
         )}
 
-        {/* ARCHIVIO ALLIEVI */}
         {activeTab === "allievi" && !selectedAllievo && (
           <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -1135,7 +1201,6 @@ export default function MaestraDashboardPage() {
           </div>
         )}
 
-        {/* DETTAGLIO SINGOLO ALLIEVO (CON YOUTUBE IMPORTER RESTORATO) */}
         {selectedAllievo && (
           <div className="space-y-6">
             <button
@@ -1209,7 +1274,6 @@ export default function MaestraDashboardPage() {
               </div>
             </div>
 
-            {/* YOUTUBE DOWNLOADER RESTORATO */}
             <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-sm space-y-4">
               <h4 className="text-xs font-bold tracking-widest text-[#7A2238] uppercase flex items-center gap-2">
                 <svg className="w-5 h-5 text-red-600" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
@@ -1363,7 +1427,6 @@ export default function MaestraDashboardPage() {
 
       </main>
 
-      {/* MINI-PLAYER FISSO IN BASSO A DESTRA */}
       {activeAudioId && (() => {
         const activeTrack = [...basi, ...warmupBasi].find(b => b.id === activeAudioId);
         if (!activeTrack) return null;
@@ -1371,7 +1434,7 @@ export default function MaestraDashboardPage() {
           <div className="fixed bottom-6 right-6 z-50 bg-white border border-stone-200 shadow-2xl rounded-2xl p-4 w-80 sm:w-96 space-y-3 animate-fadeIn">
             <div className="flex items-center justify-between">
               <span className="text-[9px] font-bold tracking-widest text-[#7A2238] uppercase">
-                {activeTrack.allievo_nome ? `Allievo: ${activeTrack.allievo_nome}` : "Warm-up Vocale"}
+                {activeTrack.allievo_nome ? `Allievo: ${activeTrack.allievo_nome}` : "Warm-up Vocale © 2026 Raffaela Carfora"}
               </span>
               <button onClick={() => { if(audioRef.current) audioRef.current.pause(); setActiveAudioId(null); setIsPlaying(false); }} className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer">
                 <X className="w-4 h-4" />
@@ -1416,6 +1479,43 @@ export default function MaestraDashboardPage() {
         );
       })()}
 
+      {editingLezione && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-8 space-y-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-4 border-b border-stone-100">
+              <h3 className="font-serif text-xl text-stone-900 font-medium">Modifica Lezione</h3>
+              <button onClick={() => setEditingLezione(null)} className="text-stone-400 hover:text-stone-700 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditLezione} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Giorno</label>
+                <select value={editGiorno} onChange={(e) => setEditGiorno(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none">
+                  {GIORNI_SETTIMANA.map((g) => (<option key={g} value={g}>{g}</option>))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Orario</label>
+                <input type="text" value={editOra} onChange={(e) => setEditOra(e.target.value)} required className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Allievo / Corso</label>
+                <input type="text" value={editNome} onChange={(e) => setEditNome(e.target.value)} required className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-3">
+                <button type="button" onClick={() => setEditingLezione(null)} className="px-5 py-3 rounded-xl border border-stone-200 text-stone-600 text-xs font-medium hover:bg-stone-50 cursor-pointer">Annulla</button>
+                <button type="submit" className="px-6 py-3 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white text-xs font-medium shadow-sm cursor-pointer">Salva Modifiche</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div className={`fixed bottom-6 left-6 z-50 px-5 py-3 rounded-2xl text-xs font-medium shadow-2xl transition-all ${
           toast.type === 'success' ? 'bg-stone-900 text-white' : 'bg-[#7A2238] text-white'
@@ -1424,8 +1524,11 @@ export default function MaestraDashboardPage() {
         </div>
       )}
 
-      <footer className="border-t border-stone-200/80 py-6 px-6 text-center text-xs text-stone-400">
-        Nuova Accademia Toscanini &middot; Canto Moderno &middot; M° Raffaela Carfora
+      <footer className="border-t border-stone-200/80 py-6 px-6 text-center text-xs text-stone-400 space-y-1">
+        <p>Nuova Accademia Toscanini &middot; Canto Moderno &middot; M° Raffaela Carfora</p>
+        <p className="text-[10px] tracking-widest uppercase font-medium text-stone-500">
+          &copy; 2026 M° Raffaela Carfora &mdash; Tutti i diritti riservati. Esercizi protetti da copyright (Solo ascolto streaming).
+        </p>
       </footer>
     </div>
   );

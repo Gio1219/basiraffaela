@@ -356,8 +356,8 @@ export default function MaestraDashboardPage() {
     }
 
     try {
-      const WEB_APP_URL = "INCOLLA_QUI_IL_TUO_URL_DI_APPS_SCRIPT"; 
-      if (WEB_APP_URL && WEB_APP_URL !== "INCOLLA_QUI_IL_TUO_URL_DI_APPS_SCRIPT") {
+      const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcYdgHOD09AyHnltfk6_-FoHBMJNBswpIKJ1QPUXxRa-zlfVjlgu_DQakBEYJhrfX-/exec"; 
+      if (WEB_APP_URL && WEB_APP_URL !== "https://script.google.com/macros/s/AKfycbzcYdgHOD09AyHnltfk6_-FoHBMJNBswpIKJ1QPUXxRa-zlfVjlgu_DQakBEYJhrfX-/exec") {
         await fetch(WEB_APP_URL, {
           method: "POST",
           mode: "no-cors",

@@ -60,13 +60,37 @@ interface PresenzaSettimana {
   stato: string;
 }
 
-const GIORNI_SETTIMANA = ["Lunedì", "Mercoledì", "Giovedì", "Venerdì"];
+const GIORNI_SETTIMANA = ["Lunedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
 
 const ORARIO_INIZIALE: Omit<LezioneOrario, "id">[] = [
-  { giorno: "Lunedì", ora: "16:30", nome_allievo: "Maria Rossi", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Lunedì", ora: "17:15", nome_allievo: "Luca Bianchi", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Mercoledì", ora: "17:00", nome_allievo: "Maria Rossi", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Mercoledì", ora: "18:00", nome_allievo: "Giulia Verdi", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
+  // LUNEDÌ
+  { giorno: "Lunedì", ora: "17:15", nome_allievo: "Carla Mingione", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Lunedì", ora: "18:00", nome_allievo: "Nicole Borriello", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Lunedì", ora: "18:45", nome_allievo: "Manuel Ejiba", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Lunedì", ora: "19:30", nome_allievo: "Gospel", corso: "Gospel", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Lunedì", ora: "20:30", nome_allievo: "Maria Iengo", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
+
+  // MERCOLEDÌ
+  { giorno: "Mercoledì", ora: "17:00", nome_allievo: "Maria Iengo", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Mercoledì", ora: "18:00", nome_allievo: "Martina Fucci", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Mercoledì", ora: "19:00", nome_allievo: "Martina Carfora", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Mercoledì", ora: "19:45", nome_allievo: "Giorgia Esposito", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Mercoledì", ora: "20:30", nome_allievo: "Stefania Capuano", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
+
+  // GIOVEDÌ
+  { giorno: "Giovedì", ora: "16:30", nome_allievo: "Sophia Cirillo", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Giovedì", ora: "17:15", nome_allievo: "Marianna Izzo", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Giovedì", ora: "18:00", nome_allievo: "Roberta Ruggiero", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Giovedì", ora: "18:45", nome_allievo: "Francesca Cristillo", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Giovedì", ora: "19:45", nome_allievo: "Melissa Fusco", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Giovedì", ora: "20:30", nome_allievo: "Aldo Morgillo", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
+
+  // VENERDÌ
+  { giorno: "Venerdì", ora: "16:30", nome_allievo: "Tonia Cepparulo", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Venerdì", ora: "17:30", nome_allievo: "Maya Morgillo", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Venerdì", ora: "18:15", nome_allievo: "Nicole Garofalo", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Venerdì", ora: "19:00", nome_allievo: "Giovanni Russo", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
+  { giorno: "Venerdì", ora: "20:00", nome_allievo: "Rosa Lo Sapio", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
 ];
 
 export default function MaestraDashboardPage() {
@@ -114,7 +138,6 @@ export default function MaestraDashboardPage() {
   const [warmupFile, setWarmupFile] = useState<File | null>(null);
   const [isUploadingWarmup, setIsUploadingWarmup] = useState(false);
 
-  // Warmup specifico per singolo allievo
   const [allievoWarmupTitolo, setAllievoWarmupTitolo] = useState("");
   const [allievoWarmupFile, setAllievoWarmupFile] = useState<File | null>(null);
   const [isUploadingAllievoWarmup, setIsUploadingAllievoWarmup] = useState(false);
@@ -1107,7 +1130,7 @@ export default function MaestraDashboardPage() {
               </form>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {GIORNI_SETTIMANA.map((giorno) => {
                 const lezioniDelGiorno = orarioList.filter((l) => l.giorno === giorno);
 
@@ -1322,7 +1345,6 @@ export default function MaestraDashboardPage() {
               </div>
             </div>
 
-            {/* SEZIONE ASSEGNAZIONE WARM-UP SPECIFICO A QUESTO ALLIEVO */}
             <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-sm space-y-4">
               <h4 className="text-xs font-bold tracking-widest text-[#7A2238] uppercase flex items-center gap-2">
                 <Music className="w-4 h-4" /> Assegna Warm-up Specifico a {selectedAllievo.nome}

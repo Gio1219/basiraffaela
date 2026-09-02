@@ -169,16 +169,22 @@ export default function MaestraDashboardPage() {
   useEffect(() => {
     const storedNome = localStorage.getItem("allievo_nome");
     const storedCognome = localStorage.getItem("allievo_cognome");
+    const cookieAuth = document.cookie.includes("maestra_logged=true");
     
-    if (
-      !storedNome || 
-      !storedCognome || 
-      storedNome.toLowerCase().trim() !== "raffaela" || 
-      storedCognome.toLowerCase().trim() !== "carfora"
-    ) {
+    const isRaffaela = 
+      (storedNome && storedCognome && 
+       storedNome.toLowerCase().trim() === "raffaela" && 
+       storedCognome.toLowerCase().trim() === "carfora");
+
+    if (!isRaffaela && !cookieAuth) {
       router.push("/");
       return;
     }
+
+    // Persistenza sessione robusta
+    localStorage.setItem("allievo_nome", "Raffaela");
+    localStorage.setItem("allievo_cognome", "Carfora");
+    document.cookie = "maestra_logged=true; path=/; max-age=31536000";
 
     fetchData();
   }, [router]);
@@ -653,6 +659,7 @@ export default function MaestraDashboardPage() {
   const handleLogout = () => { 
     localStorage.removeItem("allievo_nome");
     localStorage.removeItem("allievo_cognome");
+    document.cookie = "maestra_logged=; path=/; max-age=0";
     router.push("/"); 
   };
 

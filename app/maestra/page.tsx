@@ -95,7 +95,7 @@ const ORARIO_INIZIALE: Omit<LezioneOrario, "id">[] = [
 
 export default function MaestraDashboardPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"orario" | "registro" | "allievi" | "warmup">("orario");
+  const [activeTab, setActiveTab] = useState<"registro" | "allievi" | "warmup">("registro");
   const [allievi, setAllievi] = useState<Allievo[]>([]);
   const [basi, setBasi] = useState<BaseMusicale[]>([]);
   const [warmupBasi, setWarmupBasi] = useState<WarmupItem[]>([]);
@@ -378,7 +378,7 @@ export default function MaestraDashboardPage() {
       }
     }
 
- try {
+    try {
       const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcYdgHOD09AyHnltfk6_-FoHBMJNBswpIKJ1QPUXxRa-zlfVjlgu_DQakBEYJhrfX-/exec"; 
       if (WEB_APP_URL) {
         await fetch(WEB_APP_URL, {
@@ -650,7 +650,11 @@ export default function MaestraDashboardPage() {
     showToast("Livello corso aggiornato!");
   };
 
-  const handleLogout = () => { router.push("/"); };
+  const handleLogout = () => { 
+    localStorage.removeItem("allievo_nome");
+    localStorage.removeItem("allievo_cognome");
+    router.push("/"); 
+  };
 
   const getCardStyle = (tipoModifica?: string | null, corso?: string | null) => {
     if (tipoModifica === "recupero") return "bg-blue-50 text-blue-900 border-blue-200";
@@ -686,22 +690,13 @@ export default function MaestraDashboardPage() {
 
         <div className="hidden md:flex items-center gap-1 bg-stone-200/60 p-1 rounded-2xl">
           <button
-            onClick={() => { setActiveTab("orario"); setSelectedAllievo(null); }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-              activeTab === "orario" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Orario</span>
-          </button>
-          <button
             onClick={() => { setActiveTab("registro"); setSelectedAllievo(null); }}
             className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
               activeTab === "registro" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
             }`}
           >
             <Table className="w-3.5 h-3.5" />
-            <span>Registro</span>
+            <span>Registro & Orario</span>
           </button>
           <button
             onClick={() => { setActiveTab("warmup"); setSelectedAllievo(null); }}
@@ -757,22 +752,13 @@ export default function MaestraDashboardPage() {
         
         <div className="flex md:hidden items-center gap-1 bg-stone-200/60 p-1 rounded-2xl w-full overflow-x-auto">
           <button
-            onClick={() => { setActiveTab("orario"); setSelectedAllievo(null); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-[11px] font-medium transition-all ${
-              activeTab === "orario" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Orario</span>
-          </button>
-          <button
             onClick={() => { setActiveTab("registro"); setSelectedAllievo(null); }}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-[11px] font-medium transition-all ${
               activeTab === "registro" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"
             }`}
           >
             <Table className="w-3.5 h-3.5" />
-            <span>Registro</span>
+            <span>Registro & Orario</span>
           </button>
           <button
             onClick={() => { setActiveTab("warmup"); setSelectedAllievo(null); }}
@@ -919,12 +905,12 @@ export default function MaestraDashboardPage() {
         )}
 
         {activeTab === "registro" && !selectedAllievo && (
-          <div className="space-y-8">
+          <div className="space-y-10">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
               <div>
-                <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Registro Presenze & Statistiche</span>
+                <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Registro Presenze & Gestione Orari</span>
                 <h2 className="text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
-                  Tabella <span className="italic font-light">con calcolo presenze mensili</span>
+                  Tabella <span className="italic font-light">presenze e modifica orari</span>
                 </h2>
               </div>
 
@@ -945,6 +931,96 @@ export default function MaestraDashboardPage() {
                   <option value="Maggio">MAGGIO</option>
                   <option value="Giugno">GIUGNO</option>
                 </select>
+              </div>
+            </div>
+
+            {/* SEZIONE GESTIONE / MODIFICA ORARI E GIORNI INTEGRATA */}
+            <div className="bg-white rounded-3xl border border-stone-200/80 p-6 sm:p-8 shadow-sm space-y-6">
+              <div>
+                <h3 className="text-xs font-bold tracking-widest text-[#7A2238] uppercase flex items-center gap-2">
+                  <Plus className="w-4 h-4" /> Aggiungi o Modifica Lezione (Orario e Giorno)
+                </h3>
+                <p className="text-xs text-stone-500 mt-0.5">Qui puoi pianificare le lezioni assegnando giorno, orario e tipo di modifica per ogni allievo.</p>
+              </div>
+
+              <form onSubmit={handleAddLezione} className="grid grid-cols-1 sm:grid-cols-5 gap-4 items-end">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Giorno</label>
+                  <select
+                    value={nuovoGiorno} onChange={(e) => setNuovoGiorno(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
+                  >
+                    {GIORNI_SETTIMANA.map((g) => (<option key={g} value={g}>{g}</option>))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Orario</label>
+                  <input
+                    type="text" value={nuovaOra} onChange={(e) => setNewOra(e.target.value)}
+                    placeholder="es. 16:30" required
+                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Allievo / Corso</label>
+                  <input
+                    type="text" value={nuovoAllievoNome} onChange={(e) => setNuovoAllievoNome(e.target.value)}
+                    placeholder="es. Maria Rossi" required
+                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Tipo Modifica</label>
+                  <select
+                    value={nuovoTipoModifica} onChange={(e) => setNuovoTipoModifica(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
+                  >
+                    <option value="normale">Normale</option>
+                    <option value="recupero">Recupero (Blu)</option>
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  className="py-3 px-6 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white font-medium text-xs transition-all shadow-sm cursor-pointer"
+                >
+                  Salva Lezione
+                </button>
+              </form>
+
+              <div className="pt-4 border-t border-stone-100">
+                <p className="text-[11px] font-bold tracking-wider text-stone-400 uppercase mb-3">Lezioni Attive per Giorno (Modifica rapida)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {GIORNI_SETTIMANA.map((giorno) => {
+                    const lezioniGiorno = orarioList.filter(l => l.giorno === giorno);
+                    if (lezioniGiorno.length === 0) return null;
+                    return (
+                      <div key={giorno} className="bg-stone-50 rounded-2xl p-4 border border-stone-200/80 space-y-2">
+                        <h4 className="font-serif font-medium text-stone-900 text-sm border-b border-stone-200 pb-1.5 flex items-center justify-between">
+                          <span>{giorno}</span>
+                          <span className="text-[10px] bg-[#7A2238]/10 text-[#7A2238] px-2 py-0.5 rounded-full font-bold">{lezioniGiorno.length}</span>
+                        </h4>
+                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                          {lezioniGiorno.map(l => (
+                            <div key={l.id} className="bg-white p-2 rounded-xl border border-stone-200 flex items-center justify-between text-xs">
+                              <div>
+                                <span className="font-bold text-[#7A2238] mr-2">{l.ora}</span>
+                                <span className="font-medium text-stone-800">{l.nome_allievo}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => openEditModal(l)} className="p-1 text-stone-500 hover:text-stone-900 cursor-pointer" title="Modifica"><Edit3 className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => handleDeleteLezione(l.id)} className="p-1 text-red-600 hover:text-red-800 cursor-pointer" title="Elimina"><Trash2 className="w-3.5 h-3.5" /></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -1063,124 +1139,6 @@ export default function MaestraDashboardPage() {
                 </div>
               );
             })}
-          </div>
-        )}
-
-        {activeTab === "orario" && !selectedAllievo && (
-          <div className="space-y-8">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-              <div>
-                <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Programmazione Ufficiale</span>
-                <h2 className="text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
-                  Orario <span className="italic font-light">settimanale</span>
-                </h2>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-sm">
-              <h3 className="text-xs font-bold tracking-widest text-stone-700 uppercase mb-4 flex items-center gap-2">
-                <Plus className="w-4 h-4 text-[#7A2238]" /> Aggiungi Nuova Lezione / Modifica
-              </h3>
-              <form onSubmit={handleAddLezione} className="grid grid-cols-1 sm:grid-cols-5 gap-4 items-end">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Giorno</label>
-                  <select
-                    value={nuovoGiorno} onChange={(e) => setNuovoGiorno(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
-                  >
-                    {GIORNI_SETTIMANA.map((g) => (<option key={g} value={g}>{g}</option>))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Orario</label>
-                  <input
-                    type="text" value={nuovaOra} onChange={(e) => setNewOra(e.target.value)}
-                    placeholder="es. 16:30" required
-                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Allievo / Corso</label>
-                  <input
-                    type="text" value={nuovoAllievoNome} onChange={(e) => setNuovoAllievoNome(e.target.value)}
-                    placeholder="es. Maria Rossi" required
-                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Tipo Modifica</label>
-                  <select
-                    value={nuovoTipoModifica} onChange={(e) => setNuovoTipoModifica(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
-                  >
-                    <option value="normale">Normale</option>
-                    <option value="recupero">Recupero (Blu)</option>
-                  </select>
-                </div>
-
-                <button
-                  type="submit"
-                  className="py-3 px-6 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white font-medium text-xs transition-all shadow-sm cursor-pointer"
-                >
-                  Aggiungi
-                </button>
-              </form>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {GIORNI_SETTIMANA.map((giorno) => {
-                const lezioniDelGiorno = orarioList.filter((l) => l.giorno === giorno);
-
-                return (
-                  <div key={giorno} className="bg-white rounded-3xl border border-stone-200/80 p-6 space-y-4 shadow-[0_2px_10px_rgba(0,0,0,0.01)] flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-                        <h3 className="font-serif text-lg text-stone-900 font-medium">{giorno}</h3>
-                        <span className="px-2.5 py-1 rounded-full bg-[#7A2238]/10 text-[#7A2238] text-[10px] font-bold tracking-wider uppercase">
-                          {lezioniDelGiorno.length}
-                        </span>
-                      </div>
-
-                      <div className="space-y-2.5 mt-3">
-                        {lezioniDelGiorno.length === 0 ? (
-                          <p className="text-xs text-stone-400 py-4 text-center">Nessuna lezione.</p>
-                        ) : (
-                          lezioniDelGiorno.map((lezione) => {
-                            const cardStyle = getCardStyle(lezione.tipo_modifica, lezione.corso);
-
-                            return (
-                              <div key={lezione.id} className={`p-3 rounded-xl border flex items-center justify-between group ${cardStyle}`}>
-                                <div>
-                                  <span className="text-[11px] font-bold opacity-75 flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
-                                    {lezione.ora}
-                                  </span>
-                                  <span className="text-xs font-semibold block mt-0.5">{lezione.nome_allievo}</span>
-                                  {lezione.corso && (
-                                    <span className="text-[9px] uppercase tracking-wider opacity-60 font-bold block">{lezione.corso}</span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button onClick={() => openEditModal(lezione)} className="p-1 hover:bg-black/10 rounded cursor-pointer" title="Modifica">
-                                    <Edit3 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button onClick={() => handleDeleteLezione(lezione.id)} className="p-1 hover:bg-red-500/20 text-red-700 rounded cursor-pointer" title="Elimina">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         )}
 

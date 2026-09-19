@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Music, LogOut, FileAudio, Users, Calendar, ArrowUpRight, Search, ChevronLeft, Clock, Camera, Plus, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Disc, Table, ShieldCheck } from "lucide-react";
+import { Music, LogOut, FileAudio, Users, ArrowUpRight, Search, ChevronLeft, Camera, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Disc, ShieldCheck } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -42,66 +42,12 @@ interface WarmupItem {
   created_at: string;
 }
 
-interface LezioneOrario {
-  id: string;
-  giorno: string;
-  ora: string;
-  nome_allievo: string;
-  corso?: string | null;
-  tipo_modifica?: string | null; 
-  stato_presenza?: string | null;
-}
-
-interface PresenzaSettimana {
-  id?: string;
-  allievo_nome: string;
-  mese: string;
-  settimana: number;
-  stato: string;
-}
-
-const GIORNI_SETTIMANA = ["Lunedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
-
-const ORARIO_INIZIALE: Omit<LezioneOrario, "id">[] = [
-  // LUNEDÌ
-  { giorno: "Lunedì", ora: "17:15", nome_allievo: "Carla Mingione", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Lunedì", ora: "18:00", nome_allievo: "Nicole Borriello", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Lunedì", ora: "18:45", nome_allievo: "Manuel Ejiba", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Lunedì", ora: "19:30", nome_allievo: "Gospel", corso: "Gospel", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Lunedì", ora: "20:30", nome_allievo: "Maria Iengo", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
-
-  // MERCOLEDÌ
-  { giorno: "Mercoledì", ora: "17:00", nome_allievo: "Maria Iengo", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Mercoledì", ora: "18:00", nome_allievo: "Martina Fucci", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Mercoledì", ora: "19:00", nome_allievo: "Martina Carfora", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Mercoledì", ora: "19:45", nome_allievo: "Giorgia Esposito", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Mercoledì", ora: "20:30", nome_allievo: "Stefania Capuano", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
-
-  // GIOVEDÌ
-  { giorno: "Giovedì", ora: "16:30", nome_allievo: "Sophia Cirillo", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Giovedì", ora: "17:15", nome_allievo: "Marianna Izzo", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Giovedì", ora: "18:00", nome_allievo: "Roberta Ruggiero", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Giovedì", ora: "18:45", nome_allievo: "Francesca Cristillo", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Giovedì", ora: "19:45", nome_allievo: "Melissa Fusco", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Giovedì", ora: "20:30", nome_allievo: "Aldo Morgillo", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
-
-  // VENERDÌ
-  { giorno: "Venerdì", ora: "16:30", nome_allievo: "Tonia Cepparulo", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Venerdì", ora: "17:30", nome_allievo: "Maya Morgillo", corso: "Base", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Venerdì", ora: "18:15", nome_allievo: "Nicole Garofalo", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Venerdì", ora: "19:00", nome_allievo: "Giovanni Russo", corso: "Professional", tipo_modifica: "normale", stato_presenza: null },
-  { giorno: "Venerdì", ora: "20:00", nome_allievo: "Rosa Lo Sapio", corso: "Avanzato", tipo_modifica: "normale", stato_presenza: null },
-];
-
 export default function MaestraDashboardPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"registro" | "allievi" | "warmup">("registro");
+  const [activeTab, setActiveTab] = useState<"warmup" | "allievi">("warmup");
   const [allievi, setAllievi] = useState<Allievo[]>([]);
   const [basi, setBasi] = useState<BaseMusicale[]>([]);
   const [warmupBasi, setWarmupBasi] = useState<WarmupItem[]>([]);
-  const [orarioList, setOrarioList] = useState<LezioneOrario[]>([]);
-  const [presenzeMensili, setPresenzeMensili] = useState<PresenzaSettimana[]>([]);
-  const [selectedMese, setSelectedMese] = useState("Settembre");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAllievo, setSelectedAllievo] = useState<Allievo | null>(null);
 
@@ -112,19 +58,6 @@ export default function MaestraDashboardPage() {
   const [editAllievoNome, setEditAllievoNome] = useState("");
   const [editAllievoCognome, setEditAllievoCognome] = useState("");
   const [editAllievoCorso, setEditAllievoCorso] = useState("");
-
-  const [editingLezione, setEditingLezione] = useState<LezioneOrario | null>(null);
-  const [editGiorno, setEditGiorno] = useState("Lunedì");
-  const [editOra, setEditOra] = useState("");
-  const [editNome, setEditNome] = useState("");
-  const [editCorso, setEditCorso] = useState("");
-  const [editTipoModifica, setEditTipoModifica] = useState("normale");
-
-  const [nuovoGiorno, setNuovoGiorno] = useState("Lunedì");
-  const [nuovaOra, setNewOra] = useState("");
-  const [nuovoAllievoNome, setNuovoAllievoNome] = useState("");
-  const [nuovoCorso, setNuovoCorso] = useState("");
-  const [nuovoTipoModifica, setNuovoTipoModifica] = useState("normale");
 
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [isConvertingYoutube, setIsConvertingYoutube] = useState(false);
@@ -181,7 +114,6 @@ export default function MaestraDashboardPage() {
       return;
     }
 
-    // Persistenza sessione robusta
     localStorage.setItem("allievo_nome", "Raffaela");
     localStorage.setItem("allievo_cognome", "Carfora");
     document.cookie = "maestra_logged=true; path=/; max-age=31536000";
@@ -189,43 +121,31 @@ export default function MaestraDashboardPage() {
     fetchData();
   }, [router]);
 
-  const fetchBasiData = async () => {
-    const { data: basiData } = await supabase.from("basi").select("*").order("created_at", { ascending: false });
-    const safeBasi = basiData || [];
-    setBasi(safeBasi);
-    const initialComments: { [key: string]: string } = {};
-    safeBasi.forEach((b) => { initialComments[b.id] = b.commento || ""; });
-    setCommentiModificati(initialComments);
-  };
-
-  const fetchWarmupData = async () => {
-    const { data } = await supabase.from("warmup").select("*").order("created_at", { ascending: false });
-    setWarmupBasi(data || []);
-  };
-
   const fetchData = async () => {
     try {
-      const { data: allieviData } = await supabase.from("allievi").select("*").order("cognome");
-      const safeAllievi = allieviData || [];
+      // Esecuzione parallela ottimizzata per la velocità di caricamento
+      const [allieviRes, basiRes, warmupRes] = await Promise.all([
+        supabase.from("allievi").select("*").order("cognome"),
+        supabase.from("basi").select("*").order("created_at", { ascending: false }),
+        supabase.from("warmup").select("*").order("created_at", { ascending: false })
+      ]);
+
+      const safeAllievi = allieviRes.data || [];
       setAllievi(safeAllievi);
+      
       const raffaela = safeAllievi.find((a) => a.nome.toLowerCase() === "raffaela" && a.cognome.toLowerCase() === "carfora");
       if (raffaela?.avatar_url) setAvatarUrl(raffaela.avatar_url);
 
-      await fetchBasiData();
-      await fetchWarmupData();
+      const safeBasi = basiRes.data || [];
+      setBasi(safeBasi);
+      const initialComments: { [key: string]: string } = {};
+      safeBasi.forEach((b) => { initialComments[b.id] = b.commento || ""; });
+      setCommentiModificati(initialComments);
 
-      const { data: presenzeData } = await supabase.from("presenze_mensili").select("*");
-      if (presenzeData) setPresenzeMensili(presenzeData);
-
-      const { data: orarioData } = await supabase.from("orario").select("*").order("ora", { ascending: true });
-      if (orarioData && orarioData.length > 0) {
-        setOrarioList(Array.from(new Map(orarioData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values()) as LezioneOrario[]);
-      } else {
-        const { data: insertedData } = await supabase.from("orario").insert(ORARIO_INIZIALE).select();
-        setOrarioList(insertedData ? Array.from(new Map(insertedData.map(item => [`${item.giorno}-${item.ora}-${item.nome_allievo}`, item])).values()) as LezioneOrario[] : ORARIO_INIZIALE.map((item, i) => ({ id: `init-${i}`, ...item })));
-      }
+      setWarmupBasi(warmupRes.data || []);
     } catch (err) {
-      console.error(err);
+      console.error("Errore di caricamento dati:", err);
+      showToast("Errore nel caricamento dei dati.", "error");
     } finally {
       setLoading(false);
     }
@@ -368,43 +288,6 @@ export default function MaestraDashboardPage() {
     }
   };
 
-  const handleSetPresenzaCell = async (allievoNomeKey: string, settimana: number, stato: string) => {
-    const existing = presenzeMensili.find(p => p.allievo_nome.toLowerCase() === allievoNomeKey.toLowerCase() && p.mese === selectedMese && p.settimana === settimana);
-
-    if (existing) {
-      await supabase.from("presenze_mensili").update({ stato }).eq("id", existing.id);
-      setPresenzeMensili(presenzeMensili.map(p => p.id === existing.id ? { ...p, stato } : p));
-    } else {
-      const newRecord = { allievo_nome: allievoNomeKey, mese: selectedMese, settimana, stato };
-      const { data } = await supabase.from("presenze_mensili").insert([newRecord]).select();
-      if (data && data[0]) {
-        setPresenzeMensili([...presenzeMensili, data[0]]);
-      } else {
-        setPresenzeMensili([...presenzeMensili, { id: Math.random().toString(), ...newRecord }]);
-      }
-    }
-
-    try {
-      const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzcYdgHOD09AyHnltfk6_-FoHBMJNBswpIKJ1QPUXxRa-zlfVjlgu_DQakBEYJhrfX-/exec"; 
-      if (WEB_APP_URL) {
-        await fetch(WEB_APP_URL, {
-          method: "POST",
-          mode: "no-cors",
-          body: JSON.stringify({
-            allievo: allievoNomeKey,
-            mese: selectedMese,
-            settimana: settimana,
-            stato: stato
-          })
-        });
-      }
-    } catch (err) {
-      console.error("Errore sync foglio:", err);
-    }
-
-    showToast(`Registrato [${stato}] per ${allievoNomeKey} (Settimana ${settimana})`);
-  };
-
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const avatarFile = e.target.files?.[0];
     if (!avatarFile) return;
@@ -524,30 +407,56 @@ export default function MaestraDashboardPage() {
     }
   };
 
+  // Funzione di riproduzione audio corretta e protetta contro errori di caricamento/codec
   const togglePlayTrack = (id: string, url: string) => {
     if (activeAudioId === id && audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
         setIsPlaying(false);
       } else {
-        audioRef.current.play();
+        audioRef.current.play().catch((err) => {
+          console.error("Errore resume audio:", err);
+          showToast("Errore riproduzione audio", "error");
+        });
         setIsPlaying(true);
       }
       return;
     }
 
-    if (audioRef.current) audioRef.current.pause();
-    const audio = new Audio(url);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    const audio = new Audio();
+    audio.crossOrigin = "anonymous";
+    audio.src = url;
     audio.playbackRate = playbackRate;
     audioRef.current = audio;
+    
     setActiveAudioId(id);
-    setIsPlaying(true);
 
     audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
     audio.onloadedmetadata = () => setDuration(audio.duration);
-    audio.onended = () => { setIsPlaying(false); setCurrentTime(0); };
+    audio.onended = () => { 
+      setIsPlaying(false); 
+      setCurrentTime(0); 
+    };
+    audio.onerror = (e) => {
+      console.error("Errore caricamento elemento audio:", e);
+      showToast("Errore riproduzione audio: file non compatibile o URL non valido", "error");
+      setIsPlaying(false);
+      setActiveAudioId(null);
+    };
 
-    audio.play().catch(() => showToast("Errore riproduzione audio", "error"));
+    audio.play()
+      .then(() => setIsPlaying(true))
+      .catch((err) => {
+        console.error("Errore avvio audio:", err);
+        showToast("Impossibile riprodurre l'audio. Verifica il file.", "error");
+        setIsPlaying(false);
+        setActiveAudioId(null);
+      });
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -563,6 +472,7 @@ export default function MaestraDashboardPage() {
   };
 
   const formatTime = (secs: number) => {
+    if (isNaN(secs)) return "0:00";
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m}:${s < 10 ? '0' : ''}${s}`;
@@ -577,72 +487,6 @@ export default function MaestraDashboardPage() {
     }
     setBasi(basi.map((b) => (b.id === id ? { ...b, commento: nuovoCommento } : b)));
     showToast("Commento aggiornato!");
-  };
-
-  const handleAddLezione = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nuovaOra.trim() || !nuovoAllievoNome.trim()) return;
-
-    const nuovaLezione = {
-      giorno: nuovoGiorno,
-      ora: nuovaOra.trim(),
-      nome_allievo: nuovoAllievoNome.trim(),
-      corso: nuovoCorso.trim() || null,
-      tipo_modifica: nuovoTipoModifica,
-    };
-
-    const { data, error } = await supabase.from("orario").insert([nuovaLezione]).select();
-    if (error) {
-      showToast("Errore salvataggio lezione: " + error.message, "error");
-      return;
-    }
-
-    if (data) {
-      setOrarioList([...orarioList, data[0]]);
-      setNewOra("");
-      setNuovoAllievoNome("");
-      setNuovoCorso("");
-      showToast("Lezione aggiunta!");
-    }
-  };
-
-  const openEditModal = (lezione: LezioneOrario) => {
-    setEditingLezione(lezione);
-    setEditGiorno(lezione.giorno);
-    setEditOra(lezione.ora);
-    setEditNome(lezione.nome_allievo);
-    setEditCorso(lezione.corso || "");
-    setEditTipoModifica(lezione.tipo_modifica || "normale");
-  };
-
-  const handleSaveEditLezione = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingLezione) return;
-
-    const updated = {
-      giorno: editGiorno,
-      ora: editOra,
-      nome_allievo: editNome,
-      corso: editCorso.trim() || null,
-      tipo_modifica: editTipoModifica,
-    };
-
-    const { error } = await supabase.from("orario").update(updated).eq("id", editingLezione.id);
-    if (error) {
-      showToast("Errore aggiornamento lezione: " + error.message, "error");
-      return;
-    }
-
-    setOrarioList(orarioList.map((item) => (item.id === editingLezione.id ? { ...item, ...updated } : item)));
-    setEditingLezione(null);
-    showToast("Lezione aggiornata!");
-  };
-
-  const handleDeleteLezione = async (id: string) => {
-    if (!confirm("Vuoi eliminare questa lezione?")) return;
-    await supabase.from("orario").delete().eq("id", id);
-    setOrarioList(orarioList.filter((item) => item.id !== id));
-    showToast("Lezione eliminata.");
   };
 
   const handleUpdateCorso = async (allievoId: string, nuovoCorso: string) => {
@@ -664,7 +508,6 @@ export default function MaestraDashboardPage() {
   };
 
   const getCardStyle = (tipoModifica?: string | null, corso?: string | null) => {
-    if (tipoModifica === "recupero") return "bg-blue-50 text-blue-900 border-blue-200";
     switch (corso) {
       case "Avanzato": return "bg-amber-100 text-amber-800 border-amber-200";
       case "Professional": return "bg-purple-100 text-purple-800 border-purple-200";
@@ -696,15 +539,6 @@ export default function MaestraDashboardPage() {
         </div>
 
         <div className="hidden md:flex items-center gap-1 bg-stone-200/60 p-1 rounded-2xl">
-          <button
-            onClick={() => { setActiveTab("registro"); setSelectedAllievo(null); }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-              activeTab === "registro" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
-            }`}
-          >
-            <Table className="w-3.5 h-3.5" />
-            <span>Registro & Orario</span>
-          </button>
           <button
             onClick={() => { setActiveTab("warmup"); setSelectedAllievo(null); }}
             className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
@@ -758,15 +592,6 @@ export default function MaestraDashboardPage() {
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-12 space-y-10 pb-32">
         
         <div className="flex md:hidden items-center gap-1 bg-stone-200/60 p-1 rounded-2xl w-full overflow-x-auto">
-          <button
-            onClick={() => { setActiveTab("registro"); setSelectedAllievo(null); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-[11px] font-medium transition-all ${
-              activeTab === "registro" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"
-            }`}
-          >
-            <Table className="w-3.5 h-3.5" />
-            <span>Registro & Orario</span>
-          </button>
           <button
             onClick={() => { setActiveTab("warmup"); setSelectedAllievo(null); }}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-[11px] font-medium transition-all ${
@@ -908,244 +733,6 @@ export default function MaestraDashboardPage() {
                 </div>
               )}
             </div>
-          </div>
-        )}
-
-        {activeTab === "registro" && !selectedAllievo && (
-          <div className="space-y-10">
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-              <div>
-                <span className="text-[10px] font-semibold tracking-[0.25em] text-[#7A2238] uppercase">Registro Presenze & Gestione Orari</span>
-                <h2 className="text-3xl lg:text-4xl font-serif text-stone-900 tracking-tight mt-1">
-                  Tabella <span className="italic font-light">presenze e modifica orari</span>
-                </h2>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-stone-600 uppercase">Mese:</label>
-                <select
-                  value={selectedMese} onChange={(e) => setSelectedMese(e.target.value)}
-                  className="px-4 py-2.5 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs font-semibold focus:outline-none shadow-xs"
-                >
-                  <option value="Settembre">SETTEMBRE</option>
-                  <option value="Ottobre">OTTOBRE</option>
-                  <option value="Novembre">NOVEMBRE</option>
-                  <option value="Dicembre">DICEMBRE</option>
-                  <option value="Gennaio">GENNAIO</option>
-                  <option value="Febbraio">FEBBRAIO</option>
-                  <option value="Marzo">MARZO</option>
-                  <option value="Aprile">APRILE</option>
-                  <option value="Maggio">MAGGIO</option>
-                  <option value="Giugno">GIUGNO</option>
-                </select>
-              </div>
-            </div>
-
-            {/* SEZIONE GESTIONE / MODIFICA ORARI E GIORNI INTEGRATA */}
-            <div className="bg-white rounded-3xl border border-stone-200/80 p-6 sm:p-8 shadow-sm space-y-6">
-              <div>
-                <h3 className="text-xs font-bold tracking-widest text-[#7A2238] uppercase flex items-center gap-2">
-                  <Plus className="w-4 h-4" /> Aggiungi o Modifica Lezione (Orario e Giorno)
-                </h3>
-                <p className="text-xs text-stone-500 mt-0.5">Qui puoi pianificare le lezioni assegnando giorno, orario e tipo di modifica per ogni allievo.</p>
-              </div>
-
-              <form onSubmit={handleAddLezione} className="grid grid-cols-1 sm:grid-cols-5 gap-4 items-end">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Giorno</label>
-                  <select
-                    value={nuovoGiorno} onChange={(e) => setNuovoGiorno(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
-                  >
-                    {GIORNI_SETTIMANA.map((g) => (<option key={g} value={g}>{g}</option>))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Orario</label>
-                  <input
-                    type="text" value={nuovaOra} onChange={(e) => setNewOra(e.target.value)}
-                    placeholder="es. 16:30" required
-                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Allievo / Corso</label>
-                  <input
-                    type="text" value={nuovoAllievoNome} onChange={(e) => setNuovoAllievoNome(e.target.value)}
-                    placeholder="es. Maria Rossi" required
-                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Tipo Modifica</label>
-                  <select
-                    value={nuovoTipoModifica} onChange={(e) => setNuovoTipoModifica(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
-                  >
-                    <option value="normale">Normale</option>
-                    <option value="recupero">Recupero (Blu)</option>
-                  </select>
-                </div>
-
-                <button
-                  type="submit"
-                  className="py-3 px-6 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white font-medium text-xs transition-all shadow-sm cursor-pointer"
-                >
-                  Salva Lezione
-                </button>
-              </form>
-
-              <div className="pt-4 border-t border-stone-100">
-                <p className="text-[11px] font-bold tracking-wider text-stone-400 uppercase mb-3">Lezioni Attive per Giorno (Modifica rapida)</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {GIORNI_SETTIMANA.map((giorno) => {
-                    const lezioniGiorno = orarioList.filter(l => l.giorno === giorno);
-                    if (lezioniGiorno.length === 0) return null;
-                    return (
-                      <div key={giorno} className="bg-stone-50 rounded-2xl p-4 border border-stone-200/80 space-y-2">
-                        <h4 className="font-serif font-medium text-stone-900 text-sm border-b border-stone-200 pb-1.5 flex items-center justify-between">
-                          <span>{giorno}</span>
-                          <span className="text-[10px] bg-[#7A2238]/10 text-[#7A2238] px-2 py-0.5 rounded-full font-bold">{lezioniGiorno.length}</span>
-                        </h4>
-                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                          {lezioniGiorno.map(l => (
-                            <div key={l.id} className="bg-white p-2 rounded-xl border border-stone-200 flex items-center justify-between text-xs">
-                              <div>
-                                <span className="font-bold text-[#7A2238] mr-2">{l.ora}</span>
-                                <span className="font-medium text-stone-800">{l.nome_allievo}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <button onClick={() => openEditModal(l)} className="p-1 text-stone-500 hover:text-stone-900 cursor-pointer" title="Modifica"><Edit3 className="w-3.5 h-3.5" /></button>
-                                <button onClick={() => handleDeleteLezione(l.id)} className="p-1 text-red-600 hover:text-red-800 cursor-pointer" title="Elimina"><Trash2 className="w-3.5 h-3.5" /></button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {GIORNI_SETTIMANA.map((giorno) => {
-              const lezioniGiorno = orarioList.filter(l => 
-                l.giorno === giorno && 
-                l.corso?.toLowerCase() !== 'gospel' && 
-                !l.nome_allievo.toLowerCase().includes('gospel')
-              );
-              if (lezioniGiorno.length === 0) return null;
-
-              return (
-                <div key={giorno} className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <span className="w-3 h-3 rounded-full bg-[#7A2238]"></span>
-                    <h3 className="font-serif text-xl text-stone-900 font-medium">{giorno}</h3>
-                    <span className="text-xs text-stone-400 font-medium">({lezioniGiorno.length} allievi in programma)</span>
-                  </div>
-
-                  <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-sm overflow-x-auto">
-                    <table className="w-full border-collapse text-left text-xs">
-                      <thead>
-                        <tr className="bg-[#7A2238] text-white">
-                          <th className="p-4 rounded-tl-2xl font-serif font-medium uppercase tracking-wider">Orario & Allievo</th>
-                          <th className="p-4 text-center font-bold tracking-widest border-l border-white/20">Settimana 1</th>
-                          <th className="p-4 text-center font-bold tracking-widest border-l border-white/20">Settimana 2</th>
-                          <th className="p-4 text-center font-bold tracking-widest border-l border-white/20">Settimana 3</th>
-                          <th className="p-4 text-center font-bold tracking-widest border-l border-white/20">Settimana 4</th>
-                          <th className="p-4 text-center font-bold tracking-widest rounded-tr-2xl border-l border-white/20">Riepilogo Mese</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-200">
-                        {lezioniGiorno.map((lezione) => {
-                          const allievoKey = lezione.nome_allievo;
-
-                          let countP = 0;
-                          let countA = 0;
-                          let countR = 0;
-                          [1, 2, 3, 4].forEach(sNum => {
-                            const rec = presenzeMensili.find(p => p.allievo_nome.toLowerCase() === allievoKey.toLowerCase() && p.mese === selectedMese && p.settimana === sNum);
-                            if (rec?.stato === 'P') countP++;
-                            if (rec?.stato === 'A') countA++;
-                            if (rec?.stato === 'R') countR++;
-                          });
-
-                          return (
-                            <tr key={lezione.id} className="hover:bg-stone-50 transition-colors">
-                              <td className="p-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-9 h-9 rounded-full overflow-hidden bg-stone-200 text-stone-700 font-semibold text-xs flex items-center justify-center shrink-0">
-                                    <span>{allievoKey.charAt(0)}</span>
-                                  </div>
-                                  <div>
-                                    <p className="font-serif font-medium text-stone-900 flex items-center gap-1.5">
-                                      <Clock className="w-3 h-3 text-[#7A2238]" /> {lezione.ora} - {allievoKey}
-                                    </p>
-                                    <span className="text-[9px] uppercase tracking-wider text-[#7A2238] font-bold bg-[#7A2238]/10 px-2 py-0.5 rounded-md mt-0.5 inline-block">
-                                      {lezione.corso || "Corso Standard"}
-                                    </span>
-                                  </div>
-                                </div>
-                              </td>
-
-                              {[1, 2, 3, 4].map((settimanaNum) => {
-                                const record = presenzeMensili.find(p => p.allievo_nome.toLowerCase() === allievoKey.toLowerCase() && p.mese === selectedMese && p.settimana === settimanaNum);
-                                const stato = record ? record.stato : null;
-
-                                return (
-                                  <td key={settimanaNum} className="p-3 border-l border-stone-200 text-center">
-                                    <div className="inline-flex items-center gap-1 bg-stone-100 p-1 rounded-xl border border-stone-200">
-                                      <button
-                                        onClick={() => handleSetPresenzaCell(allievoKey, settimanaNum, 'P')}
-                                        className={`w-7 h-7 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center ${
-                                          stato === 'P' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white text-stone-700 hover:bg-emerald-50'
-                                        }`}
-                                        title="Presente"
-                                      >
-                                        P
-                                      </button>
-                                      <button
-                                        onClick={() => handleSetPresenzaCell(allievoKey, settimanaNum, 'A')}
-                                        className={`w-7 h-7 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center ${
-                                          stato === 'A' ? 'bg-red-600 text-white shadow-sm' : 'bg-white text-stone-700 hover:bg-red-50'
-                                        }`}
-                                        title="Assente"
-                                      >
-                                        A
-                                      </button>
-                                      <button
-                                        onClick={() => handleSetPresenzaCell(allievoKey, settimanaNum, 'R')}
-                                        className={`w-7 h-7 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center ${
-                                          stato === 'R' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-stone-700 hover:bg-blue-50'
-                                        }`}
-                                        title="Recupero"
-                                      >
-                                        R
-                                      </button>
-                                    </div>
-                                  </td>
-                                );
-                              })}
-
-                              <td className="p-3 border-l border-stone-200 text-center">
-                                <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold">
-                                  <span className="px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200" title="Presenti">{countP}P</span>
-                                  <span className="px-2 py-1 rounded-md bg-red-50 text-red-700 border border-red-200" title="Assenti">{countA}A</span>
-                                  <span className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200" title="Recuperi">{countR}R</span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         )}
 
@@ -1543,43 +1130,6 @@ export default function MaestraDashboardPage() {
           </div>
         );
       })()}
-
-      {editingLezione && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-8 space-y-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-4 border-b border-stone-100">
-              <h3 className="font-serif text-xl text-stone-900 font-medium">Modifica Lezione</h3>
-              <button onClick={() => setEditingLezione(null)} className="text-stone-400 hover:text-stone-700 cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEditLezione} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Giorno</label>
-                <select value={editGiorno} onChange={(e) => setEditGiorno(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none">
-                  {GIORNI_SETTIMANA.map((g) => (<option key={g} value={g}>{g}</option>))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Orario</label>
-                <input type="text" value={editOra} onChange={(e) => setEditOra(e.target.value)} required className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Allievo / Corso</label>
-                <input type="text" value={editNome} onChange={(e) => setEditNome(e.target.value)} required className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none" />
-              </div>
-
-              <div className="pt-4 flex items-center justify-end gap-3">
-                <button type="button" onClick={() => setEditingLezione(null)} className="px-5 py-3 rounded-xl border border-stone-200 text-stone-600 text-xs font-medium hover:bg-stone-50 cursor-pointer">Annulla</button>
-                <button type="submit" className="px-6 py-3 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white text-xs font-medium shadow-sm cursor-pointer">Salva Modifiche</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {toast && (
         <div className={`fixed bottom-6 left-6 z-50 px-5 py-3 rounded-2xl text-xs font-medium shadow-2xl transition-all ${

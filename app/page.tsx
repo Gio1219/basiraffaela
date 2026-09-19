@@ -1,7 +1,7 @@
 // app/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Mic, Eye, EyeOff } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
@@ -20,6 +20,18 @@ export default function LoginPage() {
   const [confermaPassword, setConfermaPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  // Al caricamento, controlla se ci sono credenziali salvate con "Ricordami"
+  useEffect(() => {
+    const savedNome = localStorage.getItem("saved_nome");
+    const savedCognome = localStorage.getItem("saved_cognome");
+    if (savedNome && savedCognome) {
+      setNome(savedNome);
+      setCognome(savedCognome);
+      setRememberMe(true);
+    }
+  }, []);
 
   const handleCheckUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +57,15 @@ export default function LoginPage() {
         alert("Allievo non trovato. Contatta la M° Raffaela Carfora per farti aggiungere.");
         setIsSubmitting(false);
         return;
+      }
+
+      // Gestione "Ricordami" sul controllo utente
+      if (rememberMe) {
+        localStorage.setItem("saved_nome", nome.trim());
+        localStorage.setItem("saved_cognome", cognome.trim());
+      } else {
+        localStorage.removeItem("saved_nome");
+        localStorage.removeItem("saved_cognome");
       }
 
       if (data.password && data.password.trim() !== "") {
@@ -205,6 +226,20 @@ export default function LoginPage() {
                     required
                     className="w-full px-4 py-3.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#7A2238]/20 transition-all text-sm shadow-[0_2px_4px_rgba(0,0,0,0.01)]"
                   />
+                </div>
+
+                {/* OPZIONE RICORDAMI */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="rememberMe"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded border-stone-300 text-[#7A2238] focus:ring-[#7A2238] cursor-pointer accent-[#7A2238]"
+                  />
+                  <label htmlFor="rememberMe" className="text-xs text-stone-600 font-medium cursor-pointer select-none">
+                    Ricordami su questo dispositivo
+                  </label>
                 </div>
 
                 <button

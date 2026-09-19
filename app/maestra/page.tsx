@@ -86,7 +86,6 @@ export default function MaestraDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Stato per catturare il log/errore esatto del browser sull'audio
   const [audioDebugLog, setAudioDebugLog] = useState<string | null>(null);
 
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
@@ -153,6 +152,18 @@ export default function MaestraDashboardPage() {
     }
   };
 
+  // Funzione sicura per risolvere l'URL del file in tempo reale (evita link rotti)
+  const resolveSafeAudioUrl = (url: string) => {
+    if (!url) return "";
+    // Se l'URL è già un link completo valido di Supabase o esterno, lo restituisce
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      return url;
+    }
+    // Se nel database è rimasto salvato solo il percorso relativo, lo ricostruisce al volo
+    const { data } = supabase.storage.from("basi").getPublicUrl(url);
+    return data.publicUrl;
+  };
+
   const handleUploadWarmup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!warmupFile || !warmupTitolo.trim()) {
@@ -162,15 +173,13 @@ export default function MaestraDashboardPage() {
 
     setIsUploadingWarmup(true);
     try {
-      const fileExt = warmupFile.name.split(".").pop() || "mp3";
+      const fileExt = warmupFile.name.split(".").pop()?.toLowerCase() || "mp3";
       const filePath = `warmup/${Date.now()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, warmupFile, { 
         upsert: true,
-        contentType: warmupFile.type || 'audio/mpeg'
+        contentType: 'audio/mpeg'
       });
       if (uploadError) throw uploadError;
-
-      const { data: publicUrlData } = supabase.storage.from("basi").getPublicUrl(filePath);
 
       const newWarmup = {
         titolo: warmupTitolo.trim(),
@@ -178,7 +187,7 @@ export default function MaestraDashboardPage() {
         tonalita: warmupTonalita.trim() || null,
         corso_destinazione: warmupCorsoDestinazione,
         allievo_nome: null,
-        file_url: publicUrlData.publicUrl,
+        file_url: filePath, // Salviamo il percorso strutturato per massima sicurezza
       };
 
       const { data, error } = await supabase.from("warmup").insert([newWarmup]).select();
@@ -208,15 +217,15 @@ export default function MaestraDashboardPage() {
 
     setIsUploadingAllievoWarmup(true);
     try {
-      const fileExt = allievoWarmupFile.name.split(".").pop() || "mp3";
-      const filePath = `warmup/allievi/${selectedAllievo.cognome}_${Date.now()}.${fileExt}`;
+      const fileExt = allievoWarmupFile.name.split(".").pop()?.toLowerCase() || "mp3";
+      const cartellaAllievo = `${selectedAllievo.cognome.toLowerCase().trim()}_${selectedAllievo.nome.toLowerCase().trim()}`;
+      const filePath = `warmup/allievi/${cartellaAllievo}/${Date.now()}.${fileExt}`;
+      
       const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, allievoWarmupFile, { 
         upsert: true,
-        contentType: allievoWarmupFile.type || 'audio/mpeg'
+        contentType: 'audio/mpeg'
       });
       if (uploadError) throw uploadError;
-
-      const { data: publicUrlData } = supabase.storage.from("basi").getPublicUrl(filePath);
 
       const newWarmup = {
         titolo: allievoWarmupTitolo.trim(),
@@ -224,7 +233,7 @@ export default function MaestraDashboardPage() {
         tonalita: null,
         corso_destinazione: null,
         allievo_nome: selectedAllievo.nome,
-        file_url: publicUrlData.publicUrl,
+        file_url: filePath,
       };
 
       const { data, error } = await supabase.from("warmup").insert([newWarmup]).select();
@@ -353,15 +362,15 @@ export default function MaestraDashboardPage() {
 
     setIsUploadingBase(true);
     try {
-      const fileExt = fileBase.name.split(".").pop() || "mp3";
-      const filePath = `basi_audio/${selectedAllievo.cognome}_${selectedAllievo.nome}_${Date.now()}.${fileExt}`;
+      const fileExt = fileBase.name.split(".").pop()?.toLowerCase() || "mp3";
+      const cartellaAllieva = `${selectedAllievo.cognome.toLowerCase().trim()}_${selectedAllievo.nome.toLowerCase().trim()}`;
+      const filePath = `basi_audio/${cartellaAllieva}/${Date.now()}.${fileExt}`;
+      
       const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, fileBase, { 
         upsert: true,
-        contentType: fileBase.type || 'audio/mpeg'
+        contentType: 'audio/mpeg'
       });
       if (uploadError) throw uploadError;
-
-      const { data: publicUrlData } = supabase.storage.from("basi").getPublicUrl(filePath);
 
       const nuovaBaseRecord = {
         allievo_nome: selectedAllievo.nome,
@@ -370,7 +379,7 @@ export default function MaestraDashboardPage() {
         artista: artistaBase.trim() || "Autore non specificato",
         tonalita: tonalitaBase,
         commento: commentoBase.trim() || null,
-        file_url: publicUrlData.publicUrl,
+        file_url: filePath, // Salvato in modo sicuro per evitare rotture future dei link
       };
 
       const { data, error } = await supabase.from("basi").insert([nuovaBaseRecord]).select();
@@ -382,7 +391,7 @@ export default function MaestraDashboardPage() {
         setArtistaBase("");
         setCommentoBase("");
         setFileBase(null);
-        showToast("Base caricata con successo!");
+        showToast("Base caricata nella cartella dell'allieva con successo!");
       }
     } catch (err: any) {
       showToast("Errore: " + err.message, "error");
@@ -405,7 +414,8 @@ export default function MaestraDashboardPage() {
 
   const handleDownload = async (url: string, filename: string) => {
     try {
-      const response = await fetch(url);
+      const resolvedUrl = resolveSafeAudioUrl(url);
+      const response = await fetch(resolvedUrl);
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -417,13 +427,12 @@ export default function MaestraDashboardPage() {
       window.URL.revokeObjectURL(blobUrl);
       showToast("Download avviato!");
     } catch (err) {
-      window.open(url, '_blank');
+      window.open(resolveSafeAudioUrl(url), '_blank');
     }
   };
 
-  // Funzione con cattura dettagliata del log di errore audio nel DOM
   const togglePlayTrack = (id: string, url: string) => {
-    setAudioDebugLog(null); // Resetta il log precedente
+    setAudioDebugLog(null);
 
     if (activeAudioId === id && audioRef.current) {
       if (isPlaying) {
@@ -431,7 +440,7 @@ export default function MaestraDashboardPage() {
         setIsPlaying(false);
       } else {
         audioRef.current.play().catch((err) => {
-          const errMsg = `Errore Play (Pause-Resume): ${err.message || err}`;
+          const errMsg = `Errore Play (Ripresa): ${err.message || err}`;
           setAudioDebugLog(errMsg);
           showToast(errMsg, "error");
         });
@@ -445,7 +454,8 @@ export default function MaestraDashboardPage() {
       audioRef.current = null;
     }
 
-    const safeUrl = encodeURI(url.trim());
+    const resolvedUrl = resolveSafeAudioUrl(url);
+    const safeUrl = encodeURI(resolvedUrl.trim());
     const audio = new Audio();
     audio.crossOrigin = "anonymous";
     audio.src = safeUrl;
@@ -461,19 +471,18 @@ export default function MaestraDashboardPage() {
       setCurrentTime(0); 
     };
 
-    // Intercettazione dettagliata dell'errore tecnico del browser sull'audio
     audio.onerror = (e) => {
       const target = audio;
       let errorDetails = "Errore sconosciuto";
       if (target && target.error) {
         switch (target.error.code) {
-          case 1: errorDetails = "MEDIA_ERR_ABORTED (Caricamento interrotto dall'utente)"; break;
+          case 1: errorDetails = "MEDIA_ERR_ABORTED (Caricamento interrotto)"; break;
           case 2: errorDetails = "MEDIA_ERR_NETWORK (Errore di rete o file non raggiungibile su Supabase)"; break;
-          case 3: errorDetails = "MEDIA_ERR_DECODE (Errore di decodifica: file audio corrotto o codec non supportato)"; break;
+          case 3: errorDetails = "MEDIA_ERR_DECODE (File audio corrotto o codec non supportato dal browser)"; break;
           case 4: errorDetails = "MEDIA_ERR_SRC_NOT_SUPPORTED (Formato non supportato o URL non valido)"; break;
         }
       }
-      const fullLog = `[Log Audio ID: ${id}] Codice ${target?.error?.code || 'N/A'}: ${errorDetails} | URL: ${url}`;
+      const fullLog = `[Log Audio ID: ${id}] Codice ${target?.error?.code || 'N/A'}: ${errorDetails} | URL: ${resolvedUrl}`;
       console.error(fullLog);
       setAudioDebugLog(fullLog);
       showToast("Errore riproduzione: " + errorDetails, "error");
@@ -487,7 +496,7 @@ export default function MaestraDashboardPage() {
         const catchLog = `Errore Avvio (Autoplay/Codec): ${err.message || err}`;
         console.error(catchLog);
         setAudioDebugLog(catchLog);
-        showToast("Impossibile riprodurre l'audio. Controlla il log sotto.", "error");
+        showToast("Impossibile riprodurre l'audio. Controlla il log.", "error");
         setIsPlaying(false);
         setActiveAudioId(null);
       });
@@ -625,14 +634,13 @@ export default function MaestraDashboardPage() {
 
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-12 space-y-10 pb-32">
         
-        {/* BOX LOG DIAGNOSTICO VISIVO IN TEMPO REALE */}
         {audioDebugLog && (
           <div className="bg-red-50 border border-red-200 text-red-900 p-4 rounded-2xl flex items-start gap-3 shadow-sm animate-fadeIn">
             <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
             <div className="flex-1 space-y-1">
               <h5 className="text-xs font-bold uppercase tracking-wider text-red-800">Diagnostica Log Audio (Errore Rilevato)</h5>
               <p className="text-xs font-mono bg-white/80 p-2.5 rounded-xl border border-red-200/60 break-all">{audioDebugLog}</p>
-              <p className="text-[11px] text-red-700 pt-0.5">💡 Consiglio: Le ultime basi potrebbero essere state caricate con un formato non standard (es. file m4a, webm o flac non convertiti in mp3 puro) oppure l'URL di Supabase ha problemi di permessi pubblici.</p>
+              <p className="text-[11px] text-red-700 pt-0.5">💡 Consiglio: Le ultime basi caricate potrebbero non essere in formato MP3 standard (es. file m4a o webm). Ti consigliamo di convertirle in MP3 prima di ricaricarle.</p>
             </div>
             <button onClick={() => setAudioDebugLog(null)} className="text-red-400 hover:text-red-700 p-1 cursor-pointer">
               <X className="w-4 h-4" />
@@ -1007,7 +1015,7 @@ export default function MaestraDashboardPage() {
 
             <div className="bg-white rounded-3xl border border-stone-200/80 p-6 shadow-sm space-y-4">
               <h4 className="text-xs font-bold tracking-widest text-[#7A2238] uppercase flex items-center gap-2">
-                <Upload className="w-4 h-4" /> Carica Nuova Base Musicale & Commento
+                <Upload className="w-4 h-4" /> Carica Nuova Base Musicale & Commento (Cartella Dedicata all'Allieva)
               </h4>
               <form onSubmit={handleUploadBaseSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1036,7 +1044,7 @@ export default function MaestraDashboardPage() {
                     <input type="file" accept="audio/*,.pdf" onChange={(e) => setFileBase(e.target.files?.[0] || null)} required className="w-full text-xs text-stone-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#7A2238]/10 file:text-[#7A2238] cursor-pointer" />
                   </div>
                   <button type="submit" disabled={isUploadingBase} className="py-3 px-6 rounded-xl bg-[#7A2238] hover:bg-[#651c2e] text-white font-medium text-xs transition-all shadow-sm cursor-pointer disabled:opacity-50">
-                    {isUploadingBase ? "Caricamento..." : "Carica Base & Commento"}
+                    {isUploadingBase ? "Caricamento in cartella..." : "Carica Base & Commento"}
                   </button>
                 </div>
               </form>

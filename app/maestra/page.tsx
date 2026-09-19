@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Music, LogOut, FileAudio, Users, ArrowUpRight, Search, ChevronLeft, Camera, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Disc, ShieldCheck } from "lucide-react";
+import { Music, LogOut, FileAudio, Users, ArrowUpRight, Search, ChevronLeft, Camera, Trash2, Edit3, X, Upload, MessageSquare, Save, Download, Play, Pause, RotateCcw, RotateCw, Disc, ShieldCheck, AlertTriangle } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -86,6 +86,9 @@ export default function MaestraDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // Stato per catturare il log/errore esatto del browser sull'audio
+  const [audioDebugLog, setAudioDebugLog] = useState<string | null>(null);
+
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -96,7 +99,7 @@ export default function MaestraDashboardPage() {
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3500);
+    setTimeout(() => setToast(null), 4000);
   };
 
   useEffect(() => {
@@ -418,15 +421,19 @@ export default function MaestraDashboardPage() {
     }
   };
 
+  // Funzione con cattura dettagliata del log di errore audio nel DOM
   const togglePlayTrack = (id: string, url: string) => {
+    setAudioDebugLog(null); // Resetta il log precedente
+
     if (activeAudioId === id && audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
         setIsPlaying(false);
       } else {
         audioRef.current.play().catch((err) => {
-          console.error("Errore ripresa audio:", err);
-          showToast("Errore riproduzione audio", "error");
+          const errMsg = `Errore Play (Pause-Resume): ${err.message || err}`;
+          setAudioDebugLog(errMsg);
+          showToast(errMsg, "error");
         });
         setIsPlaying(true);
       }
@@ -453,9 +460,23 @@ export default function MaestraDashboardPage() {
       setIsPlaying(false); 
       setCurrentTime(0); 
     };
+
+    // Intercettazione dettagliata dell'errore tecnico del browser sull'audio
     audio.onerror = (e) => {
-      console.error("Errore caricamento elemento audio:", e);
-      showToast("Impossibile riprodurre l'audio. Il file potrebbe essere corrotto o in un formato non supportato.", "error");
+      const target = audio;
+      let errorDetails = "Errore sconosciuto";
+      if (target && target.error) {
+        switch (target.error.code) {
+          case 1: errorDetails = "MEDIA_ERR_ABORTED (Caricamento interrotto dall'utente)"; break;
+          case 2: errorDetails = "MEDIA_ERR_NETWORK (Errore di rete o file non raggiungibile su Supabase)"; break;
+          case 3: errorDetails = "MEDIA_ERR_DECODE (Errore di decodifica: file audio corrotto o codec non supportato)"; break;
+          case 4: errorDetails = "MEDIA_ERR_SRC_NOT_SUPPORTED (Formato non supportato o URL non valido)"; break;
+        }
+      }
+      const fullLog = `[Log Audio ID: ${id}] Codice ${target?.error?.code || 'N/A'}: ${errorDetails} | URL: ${url}`;
+      console.error(fullLog);
+      setAudioDebugLog(fullLog);
+      showToast("Errore riproduzione: " + errorDetails, "error");
       setIsPlaying(false);
       setActiveAudioId(null);
     };
@@ -463,8 +484,10 @@ export default function MaestraDashboardPage() {
     audio.play()
       .then(() => setIsPlaying(true))
       .catch((err) => {
-        console.error("Errore blocco autoplay/codec:", err);
-        showToast("Errore di riproduzione. Prova a riscaricare o ricaricare il file.", "error");
+        const catchLog = `Errore Avvio (Autoplay/Codec): ${err.message || err}`;
+        console.error(catchLog);
+        setAudioDebugLog(catchLog);
+        showToast("Impossibile riprodurre l'audio. Controlla il log sotto.", "error");
         setIsPlaying(false);
         setActiveAudioId(null);
       });
@@ -602,6 +625,21 @@ export default function MaestraDashboardPage() {
 
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-12 space-y-10 pb-32">
         
+        {/* BOX LOG DIAGNOSTICO VISIVO IN TEMPO REALE */}
+        {audioDebugLog && (
+          <div className="bg-red-50 border border-red-200 text-red-900 p-4 rounded-2xl flex items-start gap-3 shadow-sm animate-fadeIn">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-1">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-red-800">Diagnostica Log Audio (Errore Rilevato)</h5>
+              <p className="text-xs font-mono bg-white/80 p-2.5 rounded-xl border border-red-200/60 break-all">{audioDebugLog}</p>
+              <p className="text-[11px] text-red-700 pt-0.5">💡 Consiglio: Le ultime basi potrebbero essere state caricate con un formato non standard (es. file m4a, webm o flac non convertiti in mp3 puro) oppure l'URL di Supabase ha problemi di permessi pubblici.</p>
+            </div>
+            <button onClick={() => setAudioDebugLog(null)} className="text-red-400 hover:text-red-700 p-1 cursor-pointer">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         <div className="flex md:hidden items-center gap-1 bg-stone-200/60 p-1 rounded-2xl w-full overflow-x-auto">
           <button
             onClick={() => { setActiveTab("warmup"); setSelectedAllievo(null); }}

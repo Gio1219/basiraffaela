@@ -123,7 +123,6 @@ export default function MaestraDashboardPage() {
 
   const fetchData = async () => {
     try {
-      // Esecuzione parallela ottimizzata per la velocità di caricamento
       const [allieviRes, basiRes, warmupRes] = await Promise.all([
         supabase.from("allievi").select("*").order("cognome"),
         supabase.from("basi").select("*").order("created_at", { ascending: false }),
@@ -407,7 +406,6 @@ export default function MaestraDashboardPage() {
     }
   };
 
-  // Funzione di riproduzione audio corretta e protetta contro errori di caricamento/codec
   const togglePlayTrack = (id: string, url: string) => {
     if (activeAudioId === id && audioRef.current) {
       if (isPlaying) {
@@ -415,7 +413,7 @@ export default function MaestraDashboardPage() {
         setIsPlaying(false);
       } else {
         audioRef.current.play().catch((err) => {
-          console.error("Errore resume audio:", err);
+          console.error("Errore ripresa audio:", err);
           showToast("Errore riproduzione audio", "error");
         });
         setIsPlaying(true);
@@ -428,9 +426,10 @@ export default function MaestraDashboardPage() {
       audioRef.current = null;
     }
 
+    const safeUrl = encodeURI(url.trim());
     const audio = new Audio();
     audio.crossOrigin = "anonymous";
-    audio.src = url;
+    audio.src = safeUrl;
     audio.playbackRate = playbackRate;
     audioRef.current = audio;
     
@@ -444,7 +443,7 @@ export default function MaestraDashboardPage() {
     };
     audio.onerror = (e) => {
       console.error("Errore caricamento elemento audio:", e);
-      showToast("Errore riproduzione audio: file non compatibile o URL non valido", "error");
+      showToast("File non compatibile o URL non valido. Verifica il formato MP3.", "error");
       setIsPlaying(false);
       setActiveAudioId(null);
     };
@@ -452,8 +451,8 @@ export default function MaestraDashboardPage() {
     audio.play()
       .then(() => setIsPlaying(true))
       .catch((err) => {
-        console.error("Errore avvio audio:", err);
-        showToast("Impossibile riprodurre l'audio. Verifica il file.", "error");
+        console.error("Errore blocco autoplay/codec:", err);
+        showToast("Impossibile riprodurre l'audio. Prova a ricaricare il file.", "error");
         setIsPlaying(false);
         setActiveAudioId(null);
       });

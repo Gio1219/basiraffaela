@@ -159,8 +159,12 @@ export default function MaestraDashboardPage() {
 
     setIsUploadingWarmup(true);
     try {
-      const filePath = `warmup/${Date.now()}.${warmupFile.name.split(".").pop()}`;
-      const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, warmupFile, { upsert: true });
+      const fileExt = warmupFile.name.split(".").pop() || "mp3";
+      const filePath = `warmup/${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, warmupFile, { 
+        upsert: true,
+        contentType: warmupFile.type || 'audio/mpeg'
+      });
       if (uploadError) throw uploadError;
 
       const { data: publicUrlData } = supabase.storage.from("basi").getPublicUrl(filePath);
@@ -201,8 +205,12 @@ export default function MaestraDashboardPage() {
 
     setIsUploadingAllievoWarmup(true);
     try {
-      const filePath = `warmup/allievi/${selectedAllievo.cognome}_${Date.now()}.${allievoWarmupFile.name.split(".").pop()}`;
-      const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, allievoWarmupFile, { upsert: true });
+      const fileExt = allievoWarmupFile.name.split(".").pop() || "mp3";
+      const filePath = `warmup/allievi/${selectedAllievo.cognome}_${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, allievoWarmupFile, { 
+        upsert: true,
+        contentType: allievoWarmupFile.type || 'audio/mpeg'
+      });
       if (uploadError) throw uploadError;
 
       const { data: publicUrlData } = supabase.storage.from("basi").getPublicUrl(filePath);
@@ -342,8 +350,12 @@ export default function MaestraDashboardPage() {
 
     setIsUploadingBase(true);
     try {
-      const filePath = `basi_audio/${selectedAllievo.cognome}_${selectedAllievo.nome}_${Date.now()}.${fileBase.name.split(".").pop()}`;
-      const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, fileBase, { upsert: true });
+      const fileExt = fileBase.name.split(".").pop() || "mp3";
+      const filePath = `basi_audio/${selectedAllievo.cognome}_${selectedAllievo.nome}_${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, fileBase, { 
+        upsert: true,
+        contentType: fileBase.type || 'audio/mpeg'
+      });
       if (uploadError) throw uploadError;
 
       const { data: publicUrlData } = supabase.storage.from("basi").getPublicUrl(filePath);
@@ -443,7 +455,7 @@ export default function MaestraDashboardPage() {
     };
     audio.onerror = (e) => {
       console.error("Errore caricamento elemento audio:", e);
-      showToast("File non compatibile o URL non valido. Verifica il formato MP3.", "error");
+      showToast("Impossibile riprodurre l'audio. Il file potrebbe essere corrotto o in un formato non supportato.", "error");
       setIsPlaying(false);
       setActiveAudioId(null);
     };
@@ -452,7 +464,7 @@ export default function MaestraDashboardPage() {
       .then(() => setIsPlaying(true))
       .catch((err) => {
         console.error("Errore blocco autoplay/codec:", err);
-        showToast("Impossibile riprodurre l'audio. Prova a ricaricare il file.", "error");
+        showToast("Errore di riproduzione. Prova a riscaricare o ricaricare il file.", "error");
         setIsPlaying(false);
         setActiveAudioId(null);
       });
@@ -1092,7 +1104,7 @@ export default function MaestraDashboardPage() {
               </button>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-xl bg-[#7A2238]/10 text-[#7A2238] flex items-center justify-center shrink-0">
                 <Disc className="w-5 h-5 animate-spin" />
               </div>
@@ -1120,10 +1132,10 @@ export default function MaestraDashboardPage() {
               </div>
               <button
                 onClick={() => togglePlayTrack(activeTrack.id, activeTrack.file_url)}
-                className="px-4 py-1.5 bg-[#7A2238] text-white text-xs font-medium rounded-xl flex items-center gap-1 cursor-pointer"
+                className="px-4 py-1.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-medium rounded-xl flex items-center gap-1 cursor-pointer"
               >
                 {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                <span>{isPlaying ? "Pausa" : "Play"}</span>
+                <span>{isPlaying ? "Pausa" : "Riproduci"}</span>
               </button>
             </div>
           </div>

@@ -5,6 +5,7 @@ import { Music, LogOut, FileAudio, Users, ArrowUpRight, Search, ChevronLeft, Cam
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import AddAllievoButton from "@/components/AddAllievoButton";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -803,12 +804,26 @@ export default function MaestraDashboardPage() {
                 </h2>
               </div>
 
-              <div className="relative w-full md:w-72">
-                <Search className="absolute inset-y-0 left-3.5 my-auto w-4 h-4 text-stone-400" />
-                <input
-                  type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Cerca allievo..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 text-xs transition-all shadow-xs"
+              <div className="flex w-full flex-col gap-3 sm:flex-row md:w-auto md:flex-col lg:flex-row">
+                <div className="relative w-full sm:flex-1 md:w-60">
+                  <Search className="absolute inset-y-0 left-3.5 my-auto w-4 h-4 text-stone-400" />
+                  <input
+                    type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Cerca allievo..."
+                    aria-label="Cerca allievo"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 focus:border-[#7A2238] bg-white text-stone-900 text-xs transition-all shadow-xs"
+                  />
+                </div>
+                <AddAllievoButton
+                  supabase={supabase}
+                  disabled={loading}
+                  onCreated={(allievo) => {
+                    setAllievi((current) => [...current, allievo].sort((a, b) =>
+                      a.cognome.localeCompare(b.cognome, "it") || a.nome.localeCompare(b.nome, "it")
+                    ));
+                    setSearchQuery("");
+                    showToast(`${allievo.nome} ${allievo.cognome} aggiunto all’elenco allievi!`);
+                  }}
                 />
               </div>
             </div>

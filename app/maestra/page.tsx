@@ -40,6 +40,7 @@ interface WarmupItem {
   file_url: string;
   corso_destinazione?: string | null;
   allievo_nome?: string | null;
+  allievo_id?: string | null;
   created_at: string;
 }
 
@@ -234,6 +235,7 @@ export default function MaestraDashboardPage() {
         tonalita: null,
         corso_destinazione: null,
         allievo_nome: selectedAllievo.nome,
+        allievo_id: selectedAllievo.id,
         file_url: filePath,
       };
 

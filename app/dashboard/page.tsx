@@ -12,6 +12,8 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface BaseMusicale {
   id: string;
+  allievo_id?: string | null;
+  allievo_nome?: string | null;
   titolo: string;
   artista: string;
   tonalita?: string | null;
@@ -69,7 +71,7 @@ export default function DashboardPage() {
     setCognome(storedCognome);
     fetchUserData(storedNome, storedCognome);
     fetchBasi(storedNome, storedCognome);
-    fetchWarmup();
+    fetchWarmup(storedNome, storedCognome);
   }, [router]);
 
   useEffect(() => {
@@ -132,18 +134,36 @@ export default function DashboardPage() {
     }
   };
 
-  const fetchWarmup = async () => {
+  const fetchWarmup = async (n: string, c: string) => {
     try {
+      // Recupera l'ID reale dell'allievo: i warm-up personali sono legati a questo ID,
+      // non al nome, che potrebbe essere duplicato o modificato.
+      const { data: allievo, error: allievoError } = await supabase
+        .from("allievi")
+        .select("id")
+        .ilike("nome", n)
+        .ilike("cognome", c)
+        .maybeSingle();
+
+      if (allievoError) throw allievoError;
+      if (!allievo?.id) {
+        setWarmupBasi([]);
+        return;
+      }
+
+      // Mostra i warm-up comuni (allievo_id NULL) e quelli assegnati
+      // esclusivamente a questo allievo. Non mostra quelli di altri allievi.
       const { data, error } = await supabase
         .from("warmup")
         .select("*")
+        .or(`allievo_id.eq.${allievo.id},and(allievo_id.is.null,allievo_nome.is.null)`)
         .order("created_at", { ascending: false });
 
-      if (!error) {
-        setWarmupBasi(data || []);
-      }
+      if (error) throw error;
+      setWarmupBasi(data || []);
     } catch (err) {
-      console.error(err);
+      console.error("Errore nel caricamento dei warm-up:", err);
+      setWarmupBasi([]);
     } finally {
       setLoadingWarmup(false);
     }

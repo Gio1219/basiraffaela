@@ -74,7 +74,6 @@ export default function MaestraDashboardPage() {
   const [isUploadingWarmup, setIsUploadingWarmup] = useState(false);
 
   const [allievoWarmupTitolo, setAllievoWarmupTitolo] = useState("");
-  const [allievoWarmupFile, setAllievoWarmupFile] = useState<File | null>(null);
   const [isUploadingAllievoWarmup, setIsUploadingAllievoWarmup] = useState(false);
 
   const [titoloBase, setTitoloBase] = useState("");
@@ -210,46 +209,65 @@ export default function MaestraDashboardPage() {
     }
   };
 
-  const handleUploadAllievoWarmup = async (e: React.FormEvent) => {
+  const handleUploadAllievoWarmup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!allievoWarmupFile || !allievoWarmupTitolo.trim() || !selectedAllievo) {
-      showToast("Inserisci titolo e file audio per l'allievo.", "error");
+
+    // Legge i valori direttamente dal form: evita che uno stato React non aggiornato
+    // faccia risultare vuoti titolo o file anche quando sono visibili/selezionati.
+    const formElement = e.currentTarget;
+    const formData = new FormData(formElement);
+    const titolo = String(formData.get("allievoWarmupTitolo") ?? "").trim();
+    const fileValue = formData.get("allievoWarmupFile");
+    const file = fileValue instanceof File && fileValue.size > 0 ? fileValue : null;
+    const allievo = selectedAllievo;
+
+    if (!allievo) {
+      showToast("Seleziona prima un allievo.", "error");
+      return;
+    }
+    if (!titolo) {
+      showToast("Inserisci il titolo dell'esercizio.", "error");
+      return;
+    }
+    if (!file) {
+      showToast("Seleziona un file audio per l'allievo.", "error");
       return;
     }
 
     setIsUploadingAllievoWarmup(true);
     try {
-      const fileExt = allievoWarmupFile.name.split(".").pop()?.toLowerCase() || "mp3";
-      const cartellaAllievo = `${selectedAllievo.cognome.toLowerCase().trim()}_${selectedAllievo.nome.toLowerCase().trim()}`;
+      const fileExt = file.name.split(".").pop()?.toLowerCase() || "mp3";
+      const cartellaAllievo = `${allievo.cognome.toLowerCase().trim()}_${allievo.nome.toLowerCase().trim()}`;
       const filePath = `warmup/allievi/${cartellaAllievo}/${Date.now()}.${fileExt}`;
-      
-      const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, allievoWarmupFile, { 
+
+      const { error: uploadError } = await supabase.storage.from("basi").upload(filePath, file, {
         upsert: true,
-        contentType: 'audio/mpeg'
+        contentType: file.type || "application/octet-stream",
       });
       if (uploadError) throw uploadError;
 
       const newWarmup = {
-        titolo: allievoWarmupTitolo.trim(),
+        titolo,
         artista: "M° Raffaela Carfora",
         tonalita: null,
         corso_destinazione: null,
-        allievo_nome: selectedAllievo.nome,
-        allievo_id: selectedAllievo.id,
+        allievo_nome: allievo.nome,
+        allievo_id: allievo.id,
         file_url: filePath,
       };
 
       const { data, error } = await supabase.from("warmup").insert([newWarmup]).select();
       if (error) throw error;
 
-      if (data) {
-        setWarmupBasi([data[0], ...warmupBasi]);
+      if (data?.[0]) {
+        setWarmupBasi((current) => [data[0], ...current]);
         setAllievoWarmupTitolo("");
-        setAllievoWarmupFile(null);
-        showToast(`Warm-up assegnato a ${selectedAllievo.nome} con successo!`);
+        formElement.reset();
+        showToast(`Warm-up assegnato a ${allievo.nome} con successo!`);
       }
-    } catch (err: any) {
-      showToast("Errore caricamento warm-up allievo: " + err.message, "error");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast("Errore caricamento warm-up allievo: " + message, "error");
     } finally {
       setIsUploadingAllievoWarmup(false);
     }
@@ -979,7 +997,7 @@ export default function MaestraDashboardPage() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">Titolo Esercizio</label>
                   <input
-                    type="text" value={allievoWarmupTitolo} onChange={(e) => setAllievoWarmupTitolo(e.target.value)}
+                    type="text" name="allievoWarmupTitolo" value={allievoWarmupTitolo} onChange={(e) => setAllievoWarmupTitolo(e.target.value)}
                     placeholder="es. Riscaldamento Personalizzato" required
                     className="w-full px-4 py-3 rounded-xl border border-stone-200 bg-white text-stone-900 text-xs focus:outline-none"
                   />
@@ -987,7 +1005,7 @@ export default function MaestraDashboardPage() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold tracking-widest text-stone-500 uppercase">File Audio (MP3/WAV)</label>
                   <input
-                    type="file" accept="audio/*" onChange={(e) => setAllievoWarmupFile(e.target.files?.[0] || null)} required
+                    type="file" name="allievoWarmupFile" accept="audio/*" required
                     className="w-full text-xs text-stone-500 file:mr-2 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#7A2238]/10 file:text-[#7A2238] cursor-pointer"
                   />
                 </div>
